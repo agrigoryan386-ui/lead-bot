@@ -8,7 +8,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 # ===== НАСТРОЙКИ =====
 BOT_TOKEN = "8901177637:AAEeFWoKm8X9P9LHeHPDQL_R4zbJISzX-rE"
-ADMIN_CHAT_ID = "8804129581"  # Твой Telegram ID
+ADMIN_CHAT_ID = "8804129581"
 # =====================
 
 logging.basicConfig(level=logging.INFO)
@@ -17,43 +17,72 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 app = Flask(__name__)
 
-# Клавиатура главного меню
-main_keyboard = ReplyKeyboardMarkup(
+# Клавиатура с цифрами
+menu_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="💱 Курсы валют")],
+        [KeyboardButton(text="1️⃣ Быстрые переводы в любую страну")],
+        [KeyboardButton(text="2️⃣ Лучшие курсы обмена")],
+        [KeyboardButton(text="3️⃣ Для бизнеса и частных лиц")],
         [KeyboardButton(text="📞 Оставить заявку")],
         [KeyboardButton(text="ℹ️ О компании")]
     ],
     resize_keyboard=True
 )
 
-# Примерные курсы (позже подключим реальный API)
-RATES = {
-    "USD": 92.50,
-    "EUR": 100.20,
-    "CNY": 12.80,
-    "AED": 25.20
-}
-
 @dp.message(Command("start"))
 async def start_command(message: types.Message):
     await message.answer(
         "🌍 <b>Международные платежи без границ</b>\n\n"
-        "✅ Быстрые переводы в любую страну\n"
-        "✅ Лучшие курсы обмена\n"
-        "✅ Для бизнеса и частных лиц\n\n"
-        "Выберите действие в меню:",
+        "Выберите интересующий вас пункт меню, нажав на нужную цифру:\n\n"
+        "1️⃣ Быстрые переводы в любую страну\n"
+        "2️⃣ Лучшие курсы обмена\n"
+        "3️⃣ Для бизнеса и частных лиц\n\n"
+        "📞 Оставить заявку\n"
+        "ℹ️ О компании",
         parse_mode="HTML",
-        reply_markup=main_keyboard
+        reply_markup=menu_keyboard
     )
 
-@dp.message(lambda message: message.text == "💱 Курсы валют")
-async def show_rates(message: types.Message):
-    text = "📊 <b>Примерные курсы:</b>\n\n"
-    for currency, rate in RATES.items():
-        text += f"💵 {currency} → RUB: {rate:.2f}\n"
-    text += "\n<i>Точный курс рассчитывается индивидуально</i>"
-    await message.answer(text, parse_mode="HTML")
+@dp.message(lambda message: message.text == "1️⃣ Быстрые переводы в любую страну")
+async def option_1(message: types.Message):
+    await message.answer(
+        "🚀 <b>Быстрые переводы в любую страну</b>\n\n"
+        "✅ Переводы зачисляются в течение 10-30 минут\n"
+        "✅ Работаем с 50+ странами\n"
+        "✅ Без скрытых комиссий\n\n"
+        "💳 Минимальная сумма перевода: 500 USD\n\n"
+        "Для оформления перевода нажмите /order",
+        parse_mode="HTML"
+    )
+
+@dp.message(lambda message: message.text == "2️⃣ Лучшие курсы обмена")
+async def option_2(message: types.Message):
+    await message.answer(
+        "📊 <b>Лучшие курсы обмена</b>\n\n"
+        "💰 USD → RUB: 92.50\n"
+        "💰 EUR → RUB: 100.20\n"
+        "💰 CNY → RUB: 12.80\n"
+        "💰 AED → RUB: 25.20\n\n"
+        "💡 Индивидуальный курс при сумме от 10 000 USD\n\n"
+        "Для расчёта точной суммы нажмите /calculate",
+        parse_mode="HTML"
+    )
+
+@dp.message(lambda message: message.text == "3️⃣ Для бизнеса и частных лиц")
+async def option_3(message: types.Message):
+    await message.answer(
+        "🏢 <b>Для бизнеса и частных лиц</b>\n\n"
+        "🔹 <b>Бизнес клиентам:</b>\n"
+        "   - Оплата поставщиков за рубежом\n"
+        "   - Вывод прибыли из зарубежных маркетплейсов\n"
+        "   - Зарплатные проекты для удалённых сотрудников\n\n"
+        "🔹 <b>Частным клиентам:</b>\n"
+        "   - Переводы родственникам за границу\n"
+        "   - Оплата обучения и лечения за рубежом\n"
+        "   - Конвертация сбережений\n\n"
+        "Для консультации оставьте заявку через /request",
+        parse_mode="HTML"
+    )
 
 @dp.message(lambda message: message.text == "📞 Оставить заявку")
 async def ask_contact(message: types.Message):
@@ -75,9 +104,67 @@ async def about_company(message: types.Message):
         "Работаем с 2018 года.\n"
         "Провели более 5000 платежей.\n"
         "Надёжность и скорость — наши приоритеты.\n\n"
+        "📧 Email: info@example.com\n"
+        "📱 Телефон: +7 (XXX) XXX-XX-XX\n\n"
         "По вопросам: @your_manager",
         parse_mode="HTML"
     )
+
+@dp.message(Command("order"))
+async def order_command(message: types.Message):
+    await message.answer(
+        "📝 <b>Оформление перевода</b>\n\n"
+        "Для оформления заявки отправьте:\n"
+        "- Сумму перевода\n"
+        "- Валюту отправления\n"
+        "- Валюту получения\n"
+        "- Страну получателя\n\n"
+        "Наш менеджер свяжется с вами в течение 15 минут.",
+        parse_mode="HTML"
+    )
+
+@dp.message(Command("calculate"))
+async def calculate_command(message: types.Message):
+    await message.answer(
+        "🧮 <b>Расчёт платежа</b>\n\n"
+        "Чтобы рассчитать точную сумму, отправьте:\n"
+        "<code>/calc 1000 USD RUB</code>\n\n"
+        "Пример: /calc 1000 USD RUB",
+        parse_mode="HTML"
+    )
+
+@dp.message(lambda message: message.text and message.text.startswith("/calc"))
+async def calculate_rate(message: types.Message):
+    parts = message.text.split()
+    if len(parts) != 4:
+        await message.answer("❌ Неверный формат. Используйте: /calc 1000 USD RUB")
+        return
+    
+    try:
+        amount = float(parts[1])
+        from_currency = parts[2].upper()
+        to_currency = parts[3].upper()
+        
+        if from_currency not in ["USD", "EUR", "CNY", "AED"]:
+            await message.answer("❌ Неподдерживаемая валюта. Доступны: USD, EUR, CNY, AED")
+            return
+        
+        # Примерный курс (позже подключим реальный API)
+        rates_to_rub = {"USD": 92.50, "EUR": 100.20, "CNY": 12.80, "AED": 25.20}
+        
+        if to_currency == "RUB":
+            result = amount * rates_to_rub[from_currency]
+            await message.answer(
+                f"💰 <b>Результат расчёта:</b>\n\n"
+                f"{amount:,.2f} {from_currency} = {result:,.2f} RUB\n\n"
+                f"💡 Актуальный курс уточняйте у менеджера.",
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer("❌ Пока поддерживается только расчёт в RUB")
+            
+    except Exception as e:
+        await message.answer("❌ Ошибка в расчёте. Проверьте формат.")
 
 @dp.message(lambda message: message.contact)
 async def get_contact(message: types.Message):
@@ -85,7 +172,6 @@ async def get_contact(message: types.Message):
     phone = contact.phone_number
     name = contact.first_name
     
-    # Уведомление админу
     admin_msg = (
         f"🆕 <b>Новая заявка!</b>\n\n"
         f"👤 Имя: {name}\n"
@@ -95,19 +181,20 @@ async def get_contact(message: types.Message):
     )
     await bot.send_message(ADMIN_CHAT_ID, admin_msg, parse_mode="HTML")
     
-    # Ответ клиенту
     await message.answer(
         "✅ <b>Заявка принята!</b>\n\n"
-        "Менеджер свяжется с вами в ближайшее время.",
+        "Менеджер свяжется с вами в ближайшее время.\n\n"
+        "А пока можете ознакомиться с услугами в главном меню 👇",
         parse_mode="HTML",
-        reply_markup=main_keyboard
+        reply_markup=menu_keyboard
     )
 
 @dp.message()
 async def unknown(message: types.Message):
     await message.answer(
-        "❌ Неизвестная команда\nИспользуйте кнопки меню.",
-        reply_markup=main_keyboard
+        "❌ Неизвестная команда\n\n"
+        "Используйте кнопки меню или отправьте /start",
+        reply_markup=menu_keyboard
     )
 
 @app.route('/')
