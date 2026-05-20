@@ -17,12 +17,12 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 app = Flask(__name__)
 
-# Клавиатура с цифрами
+# Клавиатура с красивыми иконками
 menu_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="1️⃣ Быстрые переводы в любую страну")],
-        [KeyboardButton(text="2️⃣ Лучшие курсы обмена")],
-        [KeyboardButton(text="3️⃣ Для бизнеса и частных лиц")],
+        [KeyboardButton(text="🚀 Быстрые переводы")],
+        [KeyboardButton(text="💰 Лучшие курсы")],
+        [KeyboardButton(text="🏢 Для бизнеса и частных лиц")],
         [KeyboardButton(text="📞 Оставить заявку")],
         [KeyboardButton(text="ℹ️ О компании")]
     ],
@@ -33,17 +33,17 @@ menu_keyboard = ReplyKeyboardMarkup(
 async def start_command(message: types.Message):
     await message.answer(
         "🌍 <b>Международные платежи без границ</b>\n\n"
-        "Выберите интересующий вас пункт меню, нажав на нужную цифру:\n\n"
-        "1️⃣ Быстрые переводы в любую страну\n"
-        "2️⃣ Лучшие курсы обмена\n"
-        "3️⃣ Для бизнеса и частных лиц\n\n"
+        "Выберите интересующий вас пункт меню:\n\n"
+        "🚀 Быстрые переводы\n"
+        "💰 Лучшие курсы\n"
+        "🏢 Для бизнеса и частных лиц\n"
         "📞 Оставить заявку\n"
         "ℹ️ О компании",
         parse_mode="HTML",
         reply_markup=menu_keyboard
     )
 
-@dp.message(lambda message: message.text == "1️⃣ Быстрые переводы в любую страну")
+@dp.message(lambda message: message.text == "🚀 Быстрые переводы")
 async def option_1(message: types.Message):
     await message.answer(
         "🚀 <b>Быстрые переводы в любую страну</b>\n\n"
@@ -55,32 +55,32 @@ async def option_1(message: types.Message):
         parse_mode="HTML"
     )
 
-@dp.message(lambda message: message.text == "2️⃣ Лучшие курсы обмена")
+@dp.message(lambda message: message.text == "💰 Лучшие курсы")
 async def option_2(message: types.Message):
     await message.answer(
-        "📊 <b>Лучшие курсы обмена</b>\n\n"
-        "💰 USD → RUB: 92.50\n"
-        "💰 EUR → RUB: 100.20\n"
-        "💰 CNY → RUB: 12.80\n"
-        "💰 AED → RUB: 25.20\n\n"
+        "💰 <b>Лучшие курсы обмена</b>\n\n"
+        "📊 USD → RUB: 92.50\n"
+        "📊 EUR → RUB: 100.20\n"
+        "📊 CNY → RUB: 12.80\n"
+        "📊 AED → RUB: 25.20\n\n"
         "💡 Индивидуальный курс при сумме от 10 000 USD\n\n"
         "Для расчёта точной суммы нажмите /calculate",
         parse_mode="HTML"
     )
 
-@dp.message(lambda message: message.text == "3️⃣ Для бизнеса и частных лиц")
+@dp.message(lambda message: message.text == "🏢 Для бизнеса и частных лиц")
 async def option_3(message: types.Message):
     await message.answer(
         "🏢 <b>Для бизнеса и частных лиц</b>\n\n"
         "🔹 <b>Бизнес клиентам:</b>\n"
-        "   - Оплата поставщиков за рубежом\n"
-        "   - Вывод прибыли из зарубежных маркетплейсов\n"
-        "   - Зарплатные проекты для удалённых сотрудников\n\n"
+        "   • Оплата поставщиков за рубежом\n"
+        "   • Вывод прибыли из зарубежных маркетплейсов\n"
+        "   • Зарплатные проекты для удалённых сотрудников\n\n"
         "🔹 <b>Частным клиентам:</b>\n"
-        "   - Переводы родственникам за границу\n"
-        "   - Оплата обучения и лечения за рубежом\n"
-        "   - Конвертация сбережений\n\n"
-        "Для консультации оставьте заявку через /request",
+        "   • Переводы родственникам за границу\n"
+        "   • Оплата обучения и лечения за рубежом\n"
+        "   • Конвертация сбережений\n\n"
+        "Для консультации оставьте заявку через 📞 Оставить заявку",
         parse_mode="HTML"
     )
 
@@ -100,14 +100,17 @@ async def ask_contact(message: types.Message):
 @dp.message(lambda message: message.text == "ℹ️ О компании")
 async def about_company(message: types.Message):
     await message.answer(
-        "🏢 <b>О компании</b>\n\n"
-        "Работаем с 2018 года.\n"
-        "Провели более 5000 платежей.\n"
-        "Надёжность и скорость — наши приоритеты.\n\n"
-        "📧 Email: info@example.com\n"
-        "📱 Телефон: +7 (XXX) XXX-XX-XX\n\n"
-        "По вопросам: @your_manager",
-        parse_mode="HTML"
+        "🏢 <b>О компании ИЛ 2.0</b>\n\n"
+        "🌟 Наши партнеры доверили нам уже более 10 000 переводов.\n\n"
+        "📞 <b>Контакты:</b>\n"
+        "   • Телефон: <a href='tel:+79163579415'>8 916 357-94-15</a> (Артур)\n"
+        "   • Сайт: <a href='https://portal.il-2.ru/me/orders'>portal.il-2.ru/me/orders</a>\n\n"
+        "⏰ <b>Режим работы:</b>\n"
+        "   • Пн-Пт: 09:00 - 19:00 МСК\n"
+        "   • Сб-Вс: выходной\n\n"
+        "💬 Для консультации оставьте заявку через 📞 Оставить заявку",
+        parse_mode="HTML",
+        disable_web_page_preview=True
     )
 
 @dp.message(Command("order"))
@@ -149,7 +152,6 @@ async def calculate_rate(message: types.Message):
             await message.answer("❌ Неподдерживаемая валюта. Доступны: USD, EUR, CNY, AED")
             return
         
-        # Примерный курс (позже подключим реальный API)
         rates_to_rub = {"USD": 92.50, "EUR": 100.20, "CNY": 12.80, "AED": 25.20}
         
         if to_currency == "RUB":
