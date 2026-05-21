@@ -205,15 +205,17 @@ async def rates(callback: CallbackQuery):
 @dp.callback_query(F.data == "about")
 async def about(callback: CallbackQuery):
     text = (
-        "🏢 О компании\n\n"
-        "АО «Инновация и логика 2.0»\n\n"
-        "Сопровождение международных платежей\n"
-        "и внешнеэкономической деятельности.\n\n"
-        "📍 Москва, ул. Малая Семёновская, д. 3а, стр. 1\n"
-        "⏰ Пн-Пт 10:00–19:00\n\n"
-        "📞 +7 (495) 129-90-90\n"
-        "📧 info@il-2.ru\n"
-        "🌐 portal.il-2.ru"
+        "🏢 АО «Инновация и логика 2.0»\n\n"
+        "Финтех-компания, предоставляющая решения для сопровождения внешнеэкономической деятельности, включая организацию и оптимизацию трансграничных платежей, структурирование расчетов с иностранными контрагентами, а также агентские и консультационные услуги в рамках внешнеторговых операций.\n\n"
+        "📌 Адрес:\n"
+        "г. Москва, ул. Малая Семёновская, д. 3а, стр. 1\n\n"
+        "⏰ Режим работы:\n"
+        "Пн-Пт, с 10:00 до 19:00\n\n"
+        "📞 Контакты:\n"
+        "Телефон: <a href='tel:+74951299090'>+7 (495) 129-90-90</a>\n"
+        "Email: <a href='mailto:info@il-2.ru'>info@il-2.ru</a>\n"
+        "Сайт: <a href='https://portal.il-2.ru/me/orders'>portal.il-2.ru/me/orders</a>\n\n"
+        "🌟 Наши партнеры доверили нам уже более 10 000 переводов."
     )
     await callback.message.edit_text(text, reply_markup=back_keyboard)
     await callback.answer()
@@ -311,8 +313,7 @@ async def calc_start(message: Message, state: FSMContext):
     await state.set_state(CalculatorForm.waiting_for_amount)
     await message.answer(
         "💰 Калькулятор валют\n\n"
-        "Введите сумму, которую хотите конвертировать:\n\n"
-        "Пример: 1000 или 1500.50"
+        "Введите сумму, которую хотите конвертировать:"
     )
 
 @dp.message(CalculatorForm.waiting_for_amount)
@@ -322,7 +323,6 @@ async def calc_amount(message: Message, state: FSMContext):
         await state.update_data(amount=amount)
         await state.set_state(CalculatorForm.waiting_for_currency)
         
-        # Клавиатура с выбором валюты
         currency_keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🇺🇸 USD (Доллар США)", callback_data="curr_USD")],
             [InlineKeyboardButton(text="🇪🇺 EUR (Евро)", callback_data="curr_EUR")],
@@ -337,7 +337,7 @@ async def calc_amount(message: Message, state: FSMContext):
             reply_markup=currency_keyboard
         )
     except ValueError:
-        await message.answer("❌ Ошибка: введите число\nПример: 1000 или 1500.50")
+        await message.answer("❌ Ошибка: введите число")
 
 @dp.callback_query(F.data.startswith("curr_"))
 async def calc_currency(callback: CallbackQuery, state: FSMContext):
