@@ -132,13 +132,21 @@ RATES = {
 }
 
 # ----------------------------
-# FSM (машина состояний для заявки)
+# FSM для заявки
 # ----------------------------
 
 class ApplicationForm(StatesGroup):
     waiting_for_phone = State()
     waiting_for_name  = State()
     waiting_for_email = State()
+
+# ----------------------------
+# FSM для калькулятора
+# ----------------------------
+
+class CalculatorForm(StatesGroup):
+    waiting_for_amount = State()
+    waiting_for_currency = State()
 
 # ----------------------------
 # Обработчики команд и колбэков
@@ -189,7 +197,7 @@ async def rates(callback: CallbackQuery):
         f"1 CNY = {RATES['CNY']} ₽\n"
         f"1 AED = {RATES['AED']} ₽\n\n"
         "💡 Индивидуальный курс при сумме от 150 000 USD\n\n"
-        "Расчёт: /calc 1000 USD"
+        "Нажмите /calc для расчёта"
     )
     await callback.message.edit_text(text, reply_markup=back_keyboard)
     await callback.answer()
@@ -221,6 +229,10 @@ async def application(callback: CallbackQuery, state: FSMContext):
         reply_markup=contact_keyboard
     )
     await callback.answer()
+
+# ----------------------------
+# Обработчики заявки
+# ----------------------------
 
 @dp.message(ApplicationForm.waiting_for_phone)
 async def process_phone(message: Message, state: FSMContext):
@@ -291,42 +303,87 @@ async def process_email(message: Message, state: FSMContext):
     await message.answer("Главное меню:", reply_markup=main_menu)
 
 # ----------------------------
-# Калькулятор
+# ПОШАГОВЫЙ КАЛЬКУЛЯТОР
 # ----------------------------
 
 @dp.message(Command("calc"))
-async def calc(message: Message):
-    parts = message.text.split()
-    if len(parts) != 3:
+async def calc_start(message: Message, state: FSMContext):
+    await state.set_state(CalculatorForm.waiting_for_amount)
+    await message.answer(
+        "💰 Калькулятор валют\n\n"
+        "Введите сумму, которую хотите конвертировать:\n\n"
+        "Пример: 1000 или 1500.50"
+    )
+
+@dp.message(CalculatorForm.waiting_for_amount)
+async def calc_amount(message: Message, state: FSMContext):
+    try:
+        amount = float(message.text.strip().replace(",", "."))
+        await state.update_data(amount=amount)
+        await state.set_state(CalculatorForm.waiting_for_currency)
+        
+        # Клавиатура с выбором валюты
+        currency_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🇺🇸 USD (Доллар США)", callback_data="curr_USD")],
+            [InlineKeyboardButton(text="🇪🇺 EUR (Евро)", callback_data="curr_EUR")],
+            [InlineKeyboardButton(text="🇨🇳 CNY (Юань)", callback_data="curr_CNY")],
+            [InlineKeyboardButton(text="🇦🇪 AED (Дирхам ОАЭ)", callback_data="curr_AED")],
+            [InlineKeyboardButton(text="◀ Отмена", callback_data="calc_cancel")]
+        ])
+        
         await message.answer(
-            "Формат: /calc 1000 USD\n\n"
-            "Доступные валюты: USD, EUR, CNY, AED"
+            f"Сумма: {amount:,.2f}\n\n"
+            f"Выберите валюту, в которую хотите конвертировать:",
+            reply_markup=currency_keyboard
         )
+    except ValueError:
+        await message.answer("❌ Ошибка: введите число\nПример: 1000 или 1500.50")
+
+@dp.callback_query(F.data.startswith("curr_"))
+async def calc_currency(callback: CallbackQuery, state: FSMContext):
+    currency_code = callback.data.split("_")[1]
+    currency_names = {
+        "USD": "Доллар США",
+        "EUR": "Евро",
+        "CNY": "Китайский юань",
+        "AED": "Дирхам ОАЭ"
+    }
+    
+    data = await state.get_data()
+    amount = data.get("amount")
+    
+    if not amount:
+        await state.clear()
+        await callback.message.answer("❌ Сессия истекла. Начните заново: /calc")
+        await callback.answer()
         return
     
-    try:
-        amount = float(parts[1])
-        currency = parts[2].upper()
-        
-        if currency not in RATES:
-            await message.answer(f"❌ Валюта {currency} не поддерживается.\nДоступны: USD, EUR, CNY, AED")
-            return
-        
-        result = amount * RATES[currency]
-        
-        amount_str = f"{amount:,.2f}".replace(",", " ")
-        result_str = f"{result:,.2f}".replace(",", " ")
-        
-        await message.answer(
-            f"💵 Результат\n\n"
-            f"{amount_str} {currency} = {result_str} ₽\n"
-            f"Курс: 1 {currency} = {RATES[currency]} ₽"
-        )
-        
-    except ValueError:
-        await message.answer("❌ Ошибка: введите число\nПример: /calc 1000 USD")
-    except Exception:
-        await message.answer("❌ Ошибка расчёта")
+    rate = RATES.get(currency_code)
+    if not rate:
+        await state.clear()
+        await callback.message.answer("❌ Валюта не поддерживается")
+        await callback.answer()
+        return
+    
+    result = amount * rate
+    
+    amount_str = f"{amount:,.2f}".replace(",", " ")
+    result_str = f"{result:,.2f}".replace(",", " ")
+    
+    await callback.message.edit_text(
+        f"💵 Результат конвертации\n\n"
+        f"{amount_str} {currency_names[currency_code]} = {result_str} ₽\n"
+        f"Курс: 1 {currency_code} = {rate} ₽\n\n"
+        f"Хотите выполнить новый расчёт? Нажмите /calc"
+    )
+    await state.clear()
+    await callback.answer()
+
+@dp.callback_query(F.data == "calc_cancel")
+async def calc_cancel(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("❌ Расчёт отменён.\n\nДля нового расчёта нажмите /calc")
+    await callback.answer()
 
 # ----------------------------
 # Оформление перевода
