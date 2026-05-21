@@ -17,12 +17,11 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 app = Flask(__name__)
 
-# Клавиатура с красивыми иконками
+# Клавиатура главного меню
 menu_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🚀 Быстрые переводы")],
         [KeyboardButton(text="💰 Лучшие курсы")],
-        [KeyboardButton(text="🏢 Для бизнеса и частных лиц")],
         [KeyboardButton(text="📞 Оставить заявку")],
         [KeyboardButton(text="ℹ️ О компании")]
     ],
@@ -36,7 +35,6 @@ async def start_command(message: types.Message):
         "Выберите интересующий вас пункт меню:\n\n"
         "🚀 Быстрые переводы\n"
         "💰 Лучшие курсы\n"
-        "🏢 Для бизнеса и частных лиц\n"
         "📞 Оставить заявку\n"
         "ℹ️ О компании",
         parse_mode="HTML",
@@ -68,22 +66,6 @@ async def option_2(message: types.Message):
         parse_mode="HTML"
     )
 
-@dp.message(lambda message: message.text == "🏢 Для бизнеса и частных лиц")
-async def option_3(message: types.Message):
-    await message.answer(
-        "🏢 <b>Для бизнеса и частных лиц</b>\n\n"
-        "🔹 <b>Бизнес клиентам:</b>\n"
-        "   • Оплата поставщиков за рубежом\n"
-        "   • Вывод прибыли из зарубежных маркетплейсов\n"
-        "   • Зарплатные проекты для удалённых сотрудников\n\n"
-        "🔹 <b>Частным клиентам:</b>\n"
-        "   • Переводы родственникам за границу\n"
-        "   • Оплата обучения и лечения за рубежом\n"
-        "   • Конвертация сбережений\n\n"
-        "Для консультации оставьте заявку через 📞 Оставить заявку",
-        parse_mode="HTML"
-    )
-
 @dp.message(lambda message: message.text == "📞 Оставить заявку")
 async def ask_contact(message: types.Message):
     contact_keyboard = ReplyKeyboardMarkup(
@@ -108,7 +90,8 @@ async def about_company(message: types.Message):
         "Пн-Пт, с 10:00 до 19:00\n\n"
         "📞 <b>Контакты:</b>\n"
         "Телефон: <a href='tel:+74951299090'>+7 (495) 129-90-90</a>\n"
-        "Email: <a href='mailto:info@il-2.ru'>info@il-2.ru</a>\n\n"
+        "Email: <a href='mailto:info@il-2.ru'>info@il-2.ru</a>\n"
+        "Сайт: <a href='https://portal.il-2.ru/me/orders'>portal.il-2.ru/me/orders</a>\n\n"
         "🌟 <b>Наши партнеры доверили нам уже более 10 000 переводов.</b>\n\n"
         "💬 Для консультации оставьте заявку через 📞 Оставить заявку",
         parse_mode="HTML",
