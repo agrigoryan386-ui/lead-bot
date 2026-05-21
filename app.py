@@ -146,27 +146,31 @@ class ApplicationForm(StatesGroup):
 
 @dp.message(Command("start"))
 async def start(message: Message):
-    await message.answer(
-        "👋 <b>Добро пожаловать!</b>\n\n"
+    user_name = message.from_user.first_name
+    
+    text = (
+        f"👋 Привет, {user_name}!\n\n"
         "Международные платежи для бизнеса.\n"
-        "Быстро. Надёжно. Без лишней бюрократии.",
-        reply_markup=main_menu
+        "Быстро. Надёжно. Без лишней бюрократии."
     )
+    await message.answer(text, reply_markup=main_menu)
 
 @dp.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "👋 <b>Добро пожаловать!</b>\n\n"
+    user_name = callback.from_user.first_name
+    
+    text = (
+        f"👋 Привет, {user_name}!\n\n"
         "Международные платежи для бизнеса.\n"
-        "Быстро. Надёжно. Без лишней бюрократии.",
-        reply_markup=main_menu
+        "Быстро. Надёжно. Без лишней бюрократии."
     )
+    await callback.message.edit_text(text, reply_markup=main_menu)
     await callback.answer()
 
 @dp.callback_query(F.data == "fast")
 async def fast(callback: CallbackQuery):
     text = (
-        "⚡ <b>Быстрые переводы</b>\n\n"
+        "⚡ Быстрые переводы\n\n"
         "• Переводы в 50+ стран\n"
         "• Зачисление за 2–3 дня\n"
         "• SWIFT / агентские схемы\n"
@@ -179,7 +183,7 @@ async def fast(callback: CallbackQuery):
 @dp.callback_query(F.data == "rates")
 async def rates(callback: CallbackQuery):
     text = (
-        "💰 <b>Курсы валют</b>\n\n"
+        "💰 Курсы валют\n\n"
         f"1 USD = {RATES['USD']} ₽\n"
         f"1 EUR = {RATES['EUR']} ₽\n"
         f"1 CNY = {RATES['CNY']} ₽\n"
@@ -193,7 +197,7 @@ async def rates(callback: CallbackQuery):
 @dp.callback_query(F.data == "about")
 async def about(callback: CallbackQuery):
     text = (
-        "🏢 <b>О компании</b>\n\n"
+        "🏢 О компании\n\n"
         "АО «Инновация и логика 2.0»\n\n"
         "Сопровождение международных платежей\n"
         "и внешнеэкономической деятельности.\n\n"
@@ -210,9 +214,9 @@ async def about(callback: CallbackQuery):
 async def application(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ApplicationForm.waiting_for_phone)
     await callback.message.answer(
-        "📩 <b>Оставить заявку</b>\n\n"
-        "Шаг 1 из 3\n\n"
-        "Введите номер телефона\n"
+        "📩 Оставить заявку\n\n"
+        "Шаг 1 из 3 — номер телефона\n\n"
+        "Введите номер в формате +79991234567\n"
         "или нажмите кнопку ниже 👇",
         reply_markup=contact_keyboard
     )
@@ -226,12 +230,12 @@ async def process_phone(message: Message, state: FSMContext):
         phone = message.text.strip().replace(" ", "")
 
     if not re.match(PHONE_REGEX, phone):
-        await message.answer("❌ Некорректный номер телефона\nПример: +79991234567")
+        await message.answer("❌ Некорректный номер. Пример: +79991234567")
         return
 
     await state.update_data(phone=phone)
     await state.set_state(ApplicationForm.waiting_for_name)
-    await message.answer("👤 Шаг 2 из 3\n\nВведите ваше имя", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Шаг 2 из 3 — ваше имя\n\nВведите ваше имя:", reply_markup=ReplyKeyboardRemove())
 
 @dp.message(ApplicationForm.waiting_for_name)
 async def process_name(message: Message, state: FSMContext):
@@ -241,7 +245,7 @@ async def process_name(message: Message, state: FSMContext):
         return
     await state.update_data(name=name)
     await state.set_state(ApplicationForm.waiting_for_email)
-    await message.answer("📧 Шаг 3 из 3\n\nВведите email\nили отправьте «нет»")
+    await message.answer("Шаг 3 из 3 — email\n\nВведите email или отправьте «нет»")
 
 @dp.message(ApplicationForm.waiting_for_email)
 async def process_email(message: Message, state: FSMContext):
@@ -250,7 +254,7 @@ async def process_email(message: Message, state: FSMContext):
         email = "Не указан"
     else:
         if not re.match(EMAIL_REGEX, email_raw):
-            await message.answer("❌ Некорректный email")
+            await message.answer("❌ Некорректный email. Пример: name@domain.ru")
             return
         email = email_raw
 
@@ -270,12 +274,12 @@ async def process_email(message: Message, state: FSMContext):
     )
 
     admin_text = (
-        "🆕 <b>Новая заявка</b>\n\n"
-        f"👤 Имя: {name}\n"
-        f"📱 Телефон: {phone}\n"
-        f"📧 Email: {email}\n"
-        f"🆔 ID: {message.from_user.id}\n"
-        f"👤 Username: {username}"
+        "🆕 Новая заявка\n\n"
+        f"Имя: {name}\n"
+        f"Телефон: {phone}\n"
+        f"Email: {email}\n"
+        f"ID: {message.from_user.id}\n"
+        f"Username: {username}"
     )
     await bot.send_message(ADMIN_CHAT_ID, admin_text)
 
@@ -284,10 +288,10 @@ async def process_email(message: Message, state: FSMContext):
         "✅ Заявка отправлена.\n\nМенеджер свяжется с вами в ближайшее время.",
         reply_markup=ReplyKeyboardRemove()
     )
-    await message.answer("Главное меню 👇", reply_markup=main_menu)
+    await message.answer("Главное меню:", reply_markup=main_menu)
 
 # ----------------------------
-# Калькулятор (упрощённый)
+# Калькулятор
 # ----------------------------
 
 @dp.message(Command("calc"))
@@ -314,7 +318,7 @@ async def calc(message: Message):
         result_str = f"{result:,.2f}".replace(",", " ")
         
         await message.answer(
-            f"💵 <b>Результат</b>\n\n"
+            f"💵 Результат\n\n"
             f"{amount_str} {currency} = {result_str} ₽\n"
             f"Курс: 1 {currency} = {RATES[currency]} ₽"
         )
@@ -331,8 +335,8 @@ async def calc(message: Message):
 @dp.message(Command("order"))
 async def order(message: Message):
     await message.answer(
-        "📝 <b>Оформление перевода</b>\n\n"
-        "Отправьте:\n\n"
+        "📝 Оформление перевода\n\n"
+        "Отправьте:\n"
         "• сумму\n"
         "• валюту\n"
         "• страну\n\n"
@@ -360,6 +364,6 @@ def run_flask():
 
 if __name__ == "__main__":
     import threading
-    logger.info("🚀 Бот запущен")
+    logger.info("Бот запущен")
     threading.Thread(target=run_flask, daemon=True).start()
     asyncio.run(start_bot())
