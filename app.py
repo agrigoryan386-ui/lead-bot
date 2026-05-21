@@ -12,6 +12,9 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command
 from aiogram.types import (
     Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
     ReplyKeyboardMarkup,
     KeyboardButton
 )
@@ -21,9 +24,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 
-# =========================================
-# ЗАГРУЗКА ENV
-# =========================================
+# ======================================================
+# ENV
+# ======================================================
 
 load_dotenv()
 
@@ -31,15 +34,15 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID"))
 
 if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN не найден")
+    raise ValueError("BOT_TOKEN не найден")
 
 if not ADMIN_CHAT_ID:
-    raise ValueError("❌ ADMIN_CHAT_ID не найден")
+    raise ValueError("ADMIN_CHAT_ID не найден")
 
 
-# =========================================
-# ЛОГИ
-# =========================================
+# ======================================================
+# LOGGING
+# ======================================================
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,28 +52,31 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# =========================================
+# ======================================================
 # BOT
-# =========================================
+# ======================================================
 
 bot = Bot(
     token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    default=DefaultBotProperties(
+        parse_mode=ParseMode.HTML
+    )
 )
 
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
+dp = Dispatcher(storage=MemoryStorage())
 
 
-# =========================================
+# ======================================================
 # DATABASE
-# =========================================
+# ======================================================
 
 DB_NAME = "applications.db"
 
 
 async def init_db():
+
     async with aiosqlite.connect(DB_NAME) as db:
+
         await db.execute("""
         CREATE TABLE IF NOT EXISTS applications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,9 +88,10 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+
         await db.commit()
 
-    logger.info("✅ База данных подключена")
+    logger.info("✅ Database initialized")
 
 
 async def save_application(
@@ -94,7 +101,9 @@ async def save_application(
     name,
     email
 ):
+
     async with aiosqlite.connect(DB_NAME) as db:
+
         await db.execute("""
         INSERT INTO applications (
             telegram_id,
@@ -115,38 +124,82 @@ async def save_application(
         await db.commit()
 
 
-# =========================================
+# ======================================================
 # REGEX
-# =========================================
+# ======================================================
 
 PHONE_REGEX = r"^\+?[1-9]\d{7,14}$"
 EMAIL_REGEX = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 
-# =========================================
+# ======================================================
 # FSM
-# =========================================
+# ======================================================
 
 class ApplicationForm(StatesGroup):
+
     waiting_for_phone = State()
     waiting_for_name = State()
     waiting_for_email = State()
 
 
-# =========================================
-# KEYBOARDS
-# =========================================
+# ======================================================
+# INLINE MENU
+# ======================================================
 
-menu_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="🚀 Быстрые переводы")],
-        [KeyboardButton(text="💰 Лучшие курсы")],
-        [KeyboardButton(text="📞 Оставить заявку")],
-        [KeyboardButton(text="ℹ️ О компании")]
-    ],
-    resize_keyboard=True,
-    input_field_placeholder="Выберите пункт меню 👇"
+main_menu = InlineKeyboardMarkup(
+    inline_keyboard=[
+
+        [
+            InlineKeyboardButton(
+                text="⚡ Быстрые переводы",
+                callback_data="fast"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                text="💱 Курсы валют",
+                callback_data="rates"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                text="📩 Оставить заявку",
+                callback_data="application"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                text="🏢 О компании",
+                callback_data="about"
+            )
+        ]
+    ]
 )
+
+
+# ======================================================
+# BACK BUTTON
+# ======================================================
+
+back_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data="back"
+            )
+        ]
+    ]
+)
+
+
+# ======================================================
+# CONTACT BUTTON
+# ======================================================
 
 contact_keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -157,44 +210,14 @@ contact_keyboard = ReplyKeyboardMarkup(
             )
         ]
     ],
-    resize_keyboard=True
+    resize_keyboard=True,
+    one_time_keyboard=True
 )
 
 
-# =========================================
-# START
-# =========================================
-
-@dp.message(Command("start"))
-async def start_command(message: Message):
-
-    await message.answer(
-        "🌍 <b>Международные платежи без границ</b>\n\n"
-        "Выберите интересующий вас пункт меню 👇",
-        reply_markup=menu_keyboard
-    )
-
-
-# =========================================
-# БЫСТРЫЕ ПЕРЕВОДЫ
-# =========================================
-
-@dp.message(F.text == "🚀 Быстрые переводы")
-async def fast_transfers(message: Message):
-
-    await message.answer(
-        "🚀 <b>БЫСТРЫЕ ПЕРЕВОДЫ</b>\n\n"
-        "▫️ Зачисление 2-3 дня\n"
-        "▫️ 50+ стран\n"
-        "▫️ Без скрытых комиссий\n"
-        "▫️ Индивидуальные условия от 50 000 USD\n\n"
-        "📝 Для оформления отправьте /order"
-    )
-
-
-# =========================================
-# КУРСЫ
-# =========================================
+# ======================================================
+# RATES
+# ======================================================
 
 RATES = {
     "USD": 92.50,
@@ -204,83 +227,138 @@ RATES = {
 }
 
 
-@dp.message(F.text == "💰 Лучшие курсы")
-async def rates(message: Message):
+# ======================================================
+# START
+# ======================================================
+
+@dp.message(Command("start"))
+async def start(message: Message):
 
     text = (
-        "💰 <b>АКТУАЛЬНЫЕ КУРСЫ</b>\n\n"
+        "Добро пожаловать 👋\n\n"
+        "Международные платежи для бизнеса.\n"
+        "Быстро. Надёжно. Без лишней бюрократии."
+    )
+
+    await message.answer(
+        text,
+        reply_markup=main_menu
+    )
+
+
+# ======================================================
+# BACK
+# ======================================================
+
+@dp.callback_query(F.data == "back")
+async def back(callback: CallbackQuery):
+
+    text = (
+        "Добро пожаловать 👋\n\n"
+        "Международные платежи для бизнеса.\n"
+        "Быстро. Надёжно. Без лишней бюрократии."
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=main_menu
+    )
+
+    await callback.answer()
+
+
+# ======================================================
+# FAST TRANSFERS
+# ======================================================
+
+@dp.callback_query(F.data == "fast")
+async def fast(callback: CallbackQuery):
+
+    text = (
+        "⚡ <b>Быстрые переводы</b>\n\n"
+
+        "• Переводы в 50+ стран\n"
+        "• Зачисление за 2–3 дня\n"
+        "• SWIFT / агентские схемы\n"
+        "• Индивидуальные условия\n\n"
+
+        "Для оформления:\n"
+        "/order"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_keyboard
+    )
+
+    await callback.answer()
+
+
+# ======================================================
+# RATES
+# ======================================================
+
+@dp.callback_query(F.data == "rates")
+async def rates(callback: CallbackQuery):
+
+    text = (
+        "💱 <b>Курсы валют</b>\n\n"
     )
 
     for currency, rate in RATES.items():
-        text += f"▫️ {currency} → RUB = {rate}\n"
+
+        text += f"{currency} → RUB — {rate}\n"
 
     text += (
-        "\n📊 Для расчёта:\n"
+        "\nДля расчёта:\n"
         "<code>/calc 1000 USD RUB</code>"
     )
 
-    await message.answer(text)
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_keyboard
+    )
+
+    await callback.answer()
 
 
-# =========================================
-# CALC
-# =========================================
+# ======================================================
+# ABOUT
+# ======================================================
 
-@dp.message(Command("calc"))
-async def calc(message: Message):
+@dp.callback_query(F.data == "about")
+async def about(callback: CallbackQuery):
 
-    parts = message.text.split()
+    text = (
+        "🏢 <b>О компании</b>\n\n"
 
-    if len(parts) != 4:
-        await message.answer(
-            "❌ Формат:\n"
-            "<code>/calc 1000 USD RUB</code>"
-        )
-        return
+        "АО «Инновация и логика 2.0»\n\n"
 
-    try:
+        "Сопровождение международных платежей\n"
+        "и внешнеэкономической деятельности.\n\n"
 
-        amount = float(parts[1])
+        "📍 Москва\n"
+        "⏰ Пн-Пт 10:00–19:00\n\n"
 
-        from_currency = parts[2].upper()
-        to_currency = parts[3].upper()
+        "📞 +7 (495) 129-90-90\n"
+        "📧 info@il-2.ru"
+    )
 
-        if from_currency not in RATES:
-            await message.answer(
-                "❌ Валюта не поддерживается"
-            )
-            return
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_keyboard
+    )
 
-        if to_currency != "RUB":
-            await message.answer(
-                "❌ Пока доступен только RUB"
-            )
-            return
-
-        result = amount * RATES[from_currency]
-
-        await message.answer(
-            f"💵 <b>Результат:</b>\n\n"
-            f"{amount:,.2f} {from_currency}\n"
-            f"≈ {result:,.2f} RUB"
-        )
-
-    except Exception as e:
-
-        logger.error(e)
-
-        await message.answer(
-            "❌ Ошибка расчёта"
-        )
+    await callback.answer()
 
 
-# =========================================
-# ЗАЯВКА
-# =========================================
+# ======================================================
+# APPLICATION
+# ======================================================
 
-@dp.message(F.text == "📞 Оставить заявку")
-async def leave_application(
-    message: Message,
+@dp.callback_query(F.data == "application")
+async def application(
+    callback: CallbackQuery,
     state: FSMContext
 ):
 
@@ -288,17 +366,26 @@ async def leave_application(
         ApplicationForm.waiting_for_phone
     )
 
-    await message.answer(
-        "📱 <b>Шаг 1/3</b>\n\n"
+    text = (
+        "📩 <b>Оставить заявку</b>\n\n"
+
+        "Шаг 1 из 3\n\n"
+
         "Введите номер телефона\n"
-        "или нажмите кнопку ниже 👇",
+        "или нажмите кнопку ниже 👇"
+    )
+
+    await callback.message.answer(
+        text,
         reply_markup=contact_keyboard
     )
 
+    await callback.answer()
 
-# =========================================
+
+# ======================================================
 # PHONE
-# =========================================
+# ======================================================
 
 @dp.message(ApplicationForm.waiting_for_phone)
 async def process_phone(
@@ -307,8 +394,11 @@ async def process_phone(
 ):
 
     if message.contact:
+
         phone = message.contact.phone_number
+
     else:
+
         phone = message.text.strip()
 
     phone = phone.replace(" ", "")
@@ -316,10 +406,11 @@ async def process_phone(
     if not re.match(PHONE_REGEX, phone):
 
         await message.answer(
-            "❌ Неверный формат телефона\n\n"
+            "Некорректный номер телефона.\n\n"
             "Пример:\n"
             "+79991234567"
         )
+
         return
 
     await state.update_data(phone=phone)
@@ -329,16 +420,14 @@ async def process_phone(
     )
 
     await message.answer(
-        "✅ Телефон сохранён\n\n"
-        "👤 <b>Шаг 2/3</b>\n"
-        "Введите ваше имя",
-        reply_markup=menu_keyboard
+        "Шаг 2 из 3\n\n"
+        "Введите ваше имя"
     )
 
 
-# =========================================
+# ======================================================
 # NAME
-# =========================================
+# ======================================================
 
 @dp.message(ApplicationForm.waiting_for_name)
 async def process_name(
@@ -351,8 +440,9 @@ async def process_name(
     if len(name) < 2:
 
         await message.answer(
-            "❌ Слишком короткое имя"
+            "Введите корректное имя"
         )
+
         return
 
     await state.update_data(name=name)
@@ -362,15 +452,15 @@ async def process_name(
     )
 
     await message.answer(
-        "📧 <b>Шаг 3/3</b>\n\n"
+        "Шаг 3 из 3\n\n"
         "Введите email\n"
-        "или отправьте <b>нет</b>"
+        "или отправьте «нет»"
     )
 
 
-# =========================================
+# ======================================================
 # EMAIL
-# =========================================
+# ======================================================
 
 @dp.message(ApplicationForm.waiting_for_email)
 async def process_email(
@@ -385,6 +475,7 @@ async def process_email(
         "-",
         "skip"
     ]:
+
         email = "Не указан"
 
     else:
@@ -392,8 +483,9 @@ async def process_email(
         if not re.match(EMAIL_REGEX, email):
 
             await message.answer(
-                "❌ Некорректный email"
+                "Некорректный email"
             )
+
             return
 
     await state.update_data(email=email)
@@ -418,7 +510,8 @@ async def process_email(
     )
 
     admin_text = (
-        "🆕 <b>НОВАЯ ЗАЯВКА</b>\n\n"
+        "🆕 <b>Новая заявка</b>\n\n"
+
         f"👤 Имя: {name}\n"
         f"📱 Телефон: {phone}\n"
         f"📧 Email: {email}\n"
@@ -434,76 +527,126 @@ async def process_email(
     await state.clear()
 
     await message.answer(
-        "✅ <b>Заявка отправлена!</b>\n\n"
-        "Менеджер свяжется с вами в ближайшее время 👌",
-        reply_markup=menu_keyboard
+        "✅ Заявка отправлена.\n\n"
+        "Менеджер свяжется с вами в ближайшее время.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[],
+            resize_keyboard=True
+        )
     )
-
-
-# =========================================
-# О КОМПАНИИ
-# =========================================
-
-@dp.message(F.text == "ℹ️ О компании")
-async def about(message: Message):
 
     await message.answer(
-        "🏢 <b>О КОМПАНИИ</b>\n\n"
-        "АО «Инновация и логика 2.0»\n\n"
-        "▫️ Международные платежи\n"
-        "▫️ ВЭД сопровождение\n"
-        "▫️ Консультационные услуги\n\n"
-        "📍 Москва\n"
-        "⏰ Пн-Пт 10:00-19:00\n\n"
-        "📞 +7 (495) 129-90-90\n"
-        "📧 info@il-2.ru"
+        "Главное меню 👇",
+        reply_markup=main_menu
     )
 
 
-# =========================================
+# ======================================================
+# CALC
+# ======================================================
+
+@dp.message(Command("calc"))
+async def calc(message: Message):
+
+    parts = message.text.split()
+
+    if len(parts) != 4:
+
+        await message.answer(
+            "Формат:\n"
+            "<code>/calc 1000 USD RUB</code>"
+        )
+
+        return
+
+    try:
+
+        amount = float(parts[1])
+
+        from_currency = parts[2].upper()
+        to_currency = parts[3].upper()
+
+        if from_currency not in RATES:
+
+            await message.answer(
+                "Валюта не поддерживается"
+            )
+
+            return
+
+        if to_currency != "RUB":
+
+            await message.answer(
+                "Пока доступен только RUB"
+            )
+
+            return
+
+        result = amount * RATES[from_currency]
+
+        await message.answer(
+            f"💵 <b>Результат</b>\n\n"
+            f"{amount:,.2f} {from_currency}\n"
+            f"≈ {result:,.2f} RUB"
+        )
+
+    except Exception as e:
+
+        logger.error(e)
+
+        await message.answer(
+            "Ошибка расчёта"
+        )
+
+
+# ======================================================
 # ORDER
-# =========================================
+# ======================================================
 
 @dp.message(Command("order"))
 async def order(message: Message):
 
-    await message.answer(
-        "📝 <b>ОФОРМЛЕНИЕ ПЕРЕВОДА</b>\n\n"
-        "Отправьте:\n"
-        "▫️ сумму\n"
-        "▫️ валюту\n"
-        "▫️ страну\n\n"
-        "Менеджер ответит в течение 15 минут"
+    text = (
+        "📝 <b>Оформление перевода</b>\n\n"
+
+        "Отправьте:\n\n"
+
+        "• сумму\n"
+        "• валюту\n"
+        "• страну\n\n"
+
+        "Менеджер ответит в течение 15 минут."
     )
 
+    await message.answer(text)
 
-# =========================================
+
+# ======================================================
 # UNKNOWN
-# =========================================
+# ======================================================
 
 @dp.message()
 async def unknown(message: Message):
 
     await message.answer(
-        "❌ Неизвестная команда\n\n"
-        "Используйте меню 👇",
-        reply_markup=menu_keyboard
+        "Используйте меню ниже 👇",
+        reply_markup=main_menu
     )
 
 
-# =========================================
+# ======================================================
 # MAIN
-# =========================================
+# ======================================================
 
 async def main():
 
-    logger.info("🚀 Бот запускается")
+    logger.info("🚀 Bot started")
 
     await init_db()
 
     await bot.send_message(
         ADMIN_CHAT_ID,
-        "✅ Бот успешно запущен"
+        "✅ Бот запущен"
     )
 
     await dp.start_polling(bot)
@@ -512,7 +655,9 @@ async def main():
 if __name__ == "__main__":
 
     try:
+
         asyncio.run(main())
 
     except KeyboardInterrupt:
-        print("❌ Бот остановлен")
+
+        print("Bot stopped")
