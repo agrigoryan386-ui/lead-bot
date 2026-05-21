@@ -27,13 +27,13 @@ class ApplicationForm(StatesGroup):
     waiting_for_name = State()
     waiting_for_email = State()
 
-# Клавиатура главного меню — стильный минимализм
+# Клавиатура главного меню
 menu_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🚀  Быстрые переводы")],
-        [KeyboardButton(text="💰  Лучшие курсы")],
-        [KeyboardButton(text="📞  Оставить заявку")],
-        [KeyboardButton(text="ℹ️  О компании")]
+        [KeyboardButton(text="🚀 Быстрые переводы")],
+        [KeyboardButton(text="💰 Лучшие курсы")],
+        [KeyboardButton(text="📞 Оставить заявку")],
+        [KeyboardButton(text="ℹ️ О компании")]
     ],
     resize_keyboard=True,
     input_field_placeholder="Выберите пункт меню 👇"
@@ -43,66 +43,47 @@ menu_keyboard = ReplyKeyboardMarkup(
 async def start_command(message: types.Message):
     await message.answer(
         "🌍 <b>Международные платежи без границ</b>\n\n"
-        "Выберите интересующий вас пункт меню:\n\n"
-        "🚀  Быстрые переводы\n"
-        "💰  Лучшие курсы\n"
-        "📞  Оставить заявку\n"
-        "ℹ️  О компании",
+        "Выберите интересующий вас пункт меню 👇",
         parse_mode="HTML",
         reply_markup=menu_keyboard
     )
 
-@dp.message(lambda message: message.text == "🚀  Быстрые переводы")
+@dp.message(lambda message: message.text == "🚀 Быстрые переводы")
 async def option_1(message: types.Message):
     await message.answer(
-        "┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        "┃   🚀 <b>БЫСТРЫЕ ПЕРЕВОДЫ</b>   ┃\n"
-        "┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-        "✅ <b>Переводы зачисляются 2-3 дня</b>\n"
-        "   до конечного получателя\n\n"
-        "🌍 <b>Работаем с 50+ странами</b>\n\n"
-        "🔒 <b>Без скрытых комиссий</b>\n\n"
-        "💎 <b>При переводе более 50 000 USD</b>\n"
-        "   возможны индивидуальные условия\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📝 <i>Для оформления перевода нажмите</i>\n"
-        "➡️ <b>/order</b>",
+        "✨ * * * Б Ы С Т Р Ы Е   П Е Р Е В О Д Ы * * * ✨\n\n"
+        "▫️ Переводы зачисляются <b>2-3 дня</b> до конечного получателя\n"
+        "▫️ Работаем с <b>50+ странами</b>\n"
+        "▫️ <b>Без скрытых комиссий</b>\n"
+        "▫️ При переводе <b>более 50 000 USD</b> — индивидуальные условия\n\n"
+        "────────────────────────────────\n"
+        "📝 <i>Для оформления перевода нажмите</i> <b>/order</b>",
         parse_mode="HTML"
     )
 
-@dp.message(lambda message: message.text == "💰  Лучшие курсы")
+@dp.message(lambda message: message.text == "💰 Лучшие курсы")
 async def option_2(message: types.Message):
     await message.answer(
-        "┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        "┃   💰 <b>ЛУЧШИЕ КУРСЫ</b>     ┃\n"
-        "┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-        "┌─────────────────────────┐\n"
-        "│ USD → RUB    │ 92.50 ₽  │\n"
-        "│ EUR → RUB    │ 100.20 ₽ │\n"
-        "│ CNY → RUB    │ 12.80 ₽  │\n"
-        "│ AED → RUB    │ 25.20 ₽  │\n"
-        "└─────────────────────────┘\n\n"
-        "💡 <b>Индивидуальный курс</b>\n"
-        "   при сумме от 150 000 USD\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🧮 <i>Для расчёта точной суммы</i>\n"
-        "➡️ <b>/calculate</b>\n\n"
+        "✨ * * * Л У Ч Ш И Е   К У Р С Ы * * * ✨\n\n"
+        "<b>USD → RUB</b> — 92.50 ₽\n"
+        "<b>EUR → RUB</b> — 100.20 ₽\n"
+        "<b>CNY → RUB</b> — 12.80 ₽\n"
+        "<b>AED → RUB</b> — 25.20 ₽\n\n"
+        "💡 <b>Индивидуальный курс</b> при сумме от <b>150 000 USD</b>\n\n"
+        "────────────────────────────────\n"
+        "🧮 <i>Для расчёта точной суммы</i> <b>/calculate</b>\n"
         "📊 <i>Пример:</i> <code>/calc 1000 USD RUB</code>",
         parse_mode="HTML"
     )
 
-@dp.message(lambda message: message.text == "📞  Оставить заявку")
+@dp.message(lambda message: message.text == "📞 Оставить заявку")
 async def ask_phone(message: types.Message, state: FSMContext):
     await state.set_state(ApplicationForm.waiting_for_phone)
     await message.answer(
-        "┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        "┃   📞 <b>ОСТАВИТЬ ЗАЯВКУ</b>   ┃\n"
-        "┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-        "📝 <b>Заполните форму:</b>\n\n"
-        "▫️ Поле <b>1/3</b> — Номер телефона\n\n"
+        "✨ * * * О С Т А В И Т Ь   З А Я В К У * * * ✨\n\n"
+        "<b>Шаг 1/3</b> — Введите ваш <b>номер телефона</b>\n\n"
         "📱 <i>Пример: +7 916 357 94 15</i>\n"
-        "   Или нажмите кнопку ниже 👇\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "Или нажмите кнопку «Отправить номер» 👇",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
@@ -120,8 +101,8 @@ async def process_phone(message: types.Message, state: FSMContext):
     await state.update_data(phone=phone)
     await state.set_state(ApplicationForm.waiting_for_name)
     await message.answer(
-        "✅ Номер телефона принят!\n\n"
-        "▫️ Поле <b>2/3</b> — Введите ваше <b>имя</b>",
+        "✅ <b>Номер телефона принят!</b>\n\n"
+        "<b>Шаг 2/3</b> — Введите ваше <b>имя</b>",
         parse_mode="HTML",
         reply_markup=menu_keyboard
     )
@@ -136,9 +117,9 @@ async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(name=name)
     await state.set_state(ApplicationForm.waiting_for_email)
     await message.answer(
-        "✅ Имя принято!\n\n"
-        "▫️ Поле <b>3/3</b> — Введите ваш <b>email</b> (необязательно)\n\n"
-        "Если не хотите указывать email, отправьте 'нет' или '-'",
+        "✅ <b>Имя принято!</b>\n\n"
+        "<b>Шаг 3/3</b> — Введите ваш <b>email</b> <i>(необязательно)</i>\n\n"
+        "Если не хотите указывать email, отправьте <b>«нет»</b> или <b>«-»</b>",
         parse_mode="HTML"
     )
 
@@ -174,33 +155,28 @@ async def process_email(message: types.Message, state: FSMContext):
         reply_markup=menu_keyboard
     )
 
-@dp.message(lambda message: message.text == "ℹ️  О компании")
+@dp.message(lambda message: message.text == "ℹ️ О компании")
 async def about_company(message: types.Message):
     await message.answer(
-        "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        "┃   🏢 <b>АО «ИННОВАЦИЯ И ЛОГИКА 2.0»</b>   ┃\n"
-        "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-        "📌 <b>О КОМПАНИИ</b>\n"
+        "✨ * * * О   К О М П А Н И И * * * ✨\n\n"
+        "<b>АО «Инновация и логика 2.0»</b>\n"
         "Финтех-компания, предоставляющая решения\n"
-        "для сопровождения внешнеэкономической\n"
-        "деятельности.\n\n"
-        "✨ Оптимизация трансграничных платежей\n"
-        "✨ Структурирование расчетов\n"
-        "✨ Агентские и консультационные услуги\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📍 <b>АДРЕС</b>\n"
-        "г. Москва, ул. Малая Семёновская,\n"
-        "д. 3а, стр. 1\n\n"
-        "⏰ <b>РЕЖИМ РАБОТЫ</b>\n"
+        "для сопровождения внешнеэкономической деятельности.\n\n"
+        "▫️ Оптимизация трансграничных платежей\n"
+        "▫️ Структурирование расчетов\n"
+        "▫️ Агентские и консультационные услуги\n\n"
+        "────────────────────────────────\n"
+        "<b>📍 АДРЕС</b>\n"
+        "г. Москва, ул. Малая Семёновская, д. 3а, стр. 1\n\n"
+        "<b>⏰ РЕЖИМ РАБОТЫ</b>\n"
         "Пн-Пт, с 10:00 до 19:00\n\n"
-        "📞 <b>КОНТАКТЫ</b>\n"
+        "<b>📞 КОНТАКТЫ</b>\n"
         "Телефон: <a href='tel:+74951299090'>+7 (495) 129-90-90</a>\n"
         "Email: <a href='mailto:info@il-2.ru'>info@il-2.ru</a>\n"
         "Сайт: <a href='https://portal.il-2.ru/me/orders'>portal.il-2.ru/me/orders</a>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "────────────────────────────────\n"
         "🌟 <b>10 000+</b> успешных переводов\n\n"
-        "💬 <i>Для консультации оставьте заявку</i>\n"
-        "➡️ <b>📞 Оставить заявку</b>",
+        "💬 <i>Для консультации оставьте заявку</i> <b>📞 Оставить заявку</b>",
         parse_mode="HTML",
         disable_web_page_preview=True
     )
@@ -208,33 +184,27 @@ async def about_company(message: types.Message):
 @dp.message(Command("order"))
 async def order_command(message: types.Message):
     await message.answer(
-        "┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        "┃   📝 <b>ОФОРМЛЕНИЕ ПЕРЕВОДА</b>  ┃\n"
-        "┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-        "✏️ Для оформления заявки отправьте:\n\n"
+        "✨ * * * О Ф О Р М Л Е Н И Е   П Е Р Е В О Д А * * * ✨\n\n"
+        "<b>Для оформления заявки отправьте:</b>\n\n"
         "▫️ Сумму перевода\n"
         "▫️ Валюту отправления\n"
         "▫️ Валюту получения\n"
         "▫️ Страну получателя\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "⏳ <i>Наш менеджер свяжется с вами</i>\n"
-        "   <i>в течение 15 минут</i>",
+        "────────────────────────────────\n"
+        "⏳ <i>Наш менеджер свяжется с вами в течение 15 минут</i>",
         parse_mode="HTML"
     )
 
 @dp.message(Command("calculate"))
 async def calculate_command(message: types.Message):
     await message.answer(
-        "┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        "┃   🧮 <b>РАСЧЁТ ПЛАТЕЖА</b>    ┃\n"
-        "┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-        "📐 Чтобы рассчитать точную сумму:\n\n"
+        "✨ * * * Р А С Ч Ё Т   П Л А Т Е Ж А * * * ✨\n\n"
+        "<b>Чтобы рассчитать точную сумму, отправьте:</b>\n\n"
         "<code>/calc 1000 USD RUB</code>\n\n"
-        "📊 <b>Пример:</b>\n"
+        "<b>📊 Пример:</b>\n"
         "<code>/calc 15000 EUR RUB</code>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 <i>Доступные валюты:</i>\n"
-        "   USD, EUR, CNY, AED",
+        "────────────────────────────────\n"
+        "💡 <i>Доступные валюты:</i> USD, EUR, CNY, AED",
         parse_mode="HTML"
     )
 
@@ -261,7 +231,7 @@ async def calculate_rate(message: types.Message):
             await message.answer(
                 f"💰 <b>Результат расчёта:</b>\n\n"
                 f"{amount:,.2f} {from_currency} = {result:,.2f} RUB\n\n"
-                f"💡 Актуальный курс уточняйте у менеджера.",
+                f"💡 <i>Актуальный курс уточняйте у менеджера.</i>",
                 parse_mode="HTML"
             )
         else:
@@ -273,8 +243,9 @@ async def calculate_rate(message: types.Message):
 @dp.message()
 async def unknown(message: types.Message):
     await message.answer(
-        "❌ Неизвестная команда\n\n"
+        "❌ <b>Неизвестная команда</b>\n\n"
         "Используйте кнопки меню или отправьте /start",
+        parse_mode="HTML",
         reply_markup=menu_keyboard
     )
 
