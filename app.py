@@ -101,7 +101,18 @@ PHONE_REGEX = r"^\+?[1-9]\d{10,14}$"
 EMAIL_REGEX   = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 # ----------------------------
-# Клавиатуры
+# ПОСТОЯННАЯ КЛАВИАТУРА (всегда висит над вводом)
+# ----------------------------
+
+persistent_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🏠 Главное меню")]
+    ],
+    resize_keyboard=True
+)
+
+# ----------------------------
+# Клавиатуры для инлайн-меню
 # ----------------------------
 
 main_menu = InlineKeyboardMarkup(inline_keyboard=[
@@ -203,8 +214,9 @@ async def get_ved_news():
 # Вспомогательная функция для возврата в главное меню
 # ----------------------------
 
-async def return_to_main_menu(message: Message, state: FSMContext):
-    await state.clear()
+async def show_main_menu(message: Message, state: FSMContext = None):
+    if state:
+        await state.clear()
     user_name = message.from_user.first_name
     text = (
         f"👋 Привет, {user_name}!\n\n"
@@ -212,6 +224,14 @@ async def return_to_main_menu(message: Message, state: FSMContext):
         "Быстро. Надёжно. Без лишней бюрократии."
     )
     await message.answer(text, reply_markup=main_menu)
+
+# ----------------------------
+# Обработчик постоянной кнопки "Главное меню"
+# ----------------------------
+
+@dp.message(F.text == "🏠 Главное меню")
+async def persistent_menu_handler(message: Message, state: FSMContext):
+    await show_main_menu(message, state)
 
 # ----------------------------
 # Обработчики команд и колбэков
@@ -230,14 +250,7 @@ async def start(message: Message):
 
 @dp.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
-    user_name = callback.from_user.first_name
-    
-    text = (
-        f"👋 Привет, {user_name}!\n\n"
-        "Международные платежи для бизнеса.\n"
-        "Быстро. Надёжно. Без лишней бюрократии."
-    )
-    await callback.message.edit_text(text, reply_markup=main_menu)
+    await show_main_menu(callback.message, None)
     await callback.answer()
 
 @dp.callback_query(F.data == "fast")
@@ -386,56 +399,19 @@ async def process_email(message: Message, state: FSMContext):
         "✅ Заявка отправлена.\n\nМенеджер свяжется с вами в ближайшее время.",
         reply_markup=ReplyKeyboardRemove()
     )
-    await message.answer("Главное меню:", reply_markup=main_menu)
+    await show_main_menu(message)
 
 # ----------------------------
-# ПОШАГОВЫЙ КАЛЬКУЛЯТОР С НАВИГАЦИЕЙ
+# ПОШАГОВЫЙ КАЛЬКУЛЯТОР
 # ----------------------------
-
-# Клавиатура для шага с выбором валюты (с навигацией)
-currency_nav_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="🇺🇸 USD (Доллар США)", callback_data="curr_USD")],
-    [InlineKeyboardButton(text="🇪🇺 EUR (Евро)", callback_data="curr_EUR")],
-    [InlineKeyboardButton(text="🇨🇳 CNY (Юань)", callback_data="curr_CNY")],
-    [InlineKeyboardButton(text="🇦🇪 AED (Дирхам ОАЭ)", callback_data="curr_AED")],
-    [InlineKeyboardButton(text="⬅️ Назад", callback_data="calc_back_to_amount"), InlineKeyboardButton(text="🏠 В главное меню", callback_data="calc_back_to_menu")]
-])
-
-# Клавиатура для шага ввода суммы (с навигацией)
-amount_nav_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="🏠 В главное меню", callback_data="calc_back_to_menu")]
-])
 
 @dp.message(Command("calc"))
 async def calc_start(message: Message, state: FSMContext):
     await state.set_state(CalculatorForm.waiting_for_amount)
     await message.answer(
         "💰 Калькулятор валют\n\n"
-        "Введите сумму в рублях, которую хотите конвертировать:",
-        reply_markup=amount_nav_keyboard
+        "Введите сумму в рублях, которую хотите конвертировать:"
     )
-
-@dp.callback_query(F.data == "calc_back_to_amount")
-async def calc_back_to_amount(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(CalculatorForm.waiting_for_amount)
-    await callback.message.edit_text(
-        "💰 Калькулятор валют\n\n"
-        "Введите сумму в рублях, которую хотите конвертировать:",
-        reply_markup=amount_nav_keyboard
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "calc_back_to_menu")
-async def calc_back_to_menu(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    user_name = callback.from_user.first_name
-    text = (
-        f"👋 Привет, {user_name}!\n\n"
-        "Международные платежи для бизнеса.\n"
-        "Быстро. Надёжно. Без лишней бюрократии."
-    )
-    await callback.message.edit_text(text, reply_markup=main_menu)
-    await callback.answer()
 
 @dp.message(CalculatorForm.waiting_for_amount)
 async def calc_amount(message: Message, state: FSMContext):
@@ -444,17 +420,27 @@ async def calc_amount(message: Message, state: FSMContext):
         await state.update_data(amount=amount)
         await state.set_state(CalculatorForm.waiting_for_currency)
         
+        currency_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🇺🇸 USD (Доллар США)", callback_data="curr_USD")],
+            [InlineKeyboardButton(text="🇪🇺 EUR (Евро)", callback_data="curr_EUR")],
+            [InlineKeyboardButton(text="🇨🇳 CNY (Юань)", callback_data="curr_CNY")],
+            [InlineKeyboardButton(text="🇦🇪 AED (Дирхам ОАЭ)", callback_data="curr_AED")],
+            [InlineKeyboardButton(text="◀ Отмена", callback_data="calc_cancel")]
+        ])
+        
         await message.answer(
             f"Сумма: {amount:,.2f} ₽\n\n"
             f"Выберите валюту, в которую хотите конвертировать:",
-            reply_markup=currency_nav_keyboard
+            reply_markup=currency_keyboard
         )
     except ValueError:
-        await message.answer(
-            "❌ Ошибка: введите число\n\n"
-            "Введите сумму в рублях:",
-            reply_markup=amount_nav_keyboard
-        )
+        await message.answer("❌ Ошибка: введите число")
+
+@dp.callback_query(F.data == "calc_cancel")
+async def calc_cancel(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await show_main_menu(callback.message, None)
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("curr_"))
 async def calc_currency(callback: CallbackQuery, state: FSMContext):
@@ -505,9 +491,14 @@ async def calc_new(callback: CallbackQuery, state: FSMContext):
     await state.set_state(CalculatorForm.waiting_for_amount)
     await callback.message.edit_text(
         "💰 Калькулятор валют\n\n"
-        "Введите сумму в рублях, которую хотите конвертировать:",
-        reply_markup=amount_nav_keyboard
+        "Введите сумму в рублях, которую хотите конвертировать:"
     )
+    await callback.answer()
+
+@dp.callback_query(F.data == "calc_back_to_menu")
+async def calc_back_to_menu(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await show_main_menu(callback.message, None)
     await callback.answer()
 
 # ----------------------------
