@@ -1,22 +1,24 @@
 import os
 import re
-import logging
 import asyncio
-import aiosqlite
+import logging
+import sqlite3
 
 from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command
+from aiogram.client.default import DefaultBotProperties
+
 from aiogram.types import (
     Message,
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    KeyboardButton,
     ReplyKeyboardMarkup,
-    KeyboardButton
+    ReplyKeyboardRemove
 )
 
 from aiogram.fsm.context import FSMContext
@@ -24,25 +26,27 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 
-# ======================================================
+# =========================================================
 # ENV
-# ======================================================
+# =========================================================
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID"))
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN не найден")
+    raise ValueError("❌ BOT_TOKEN не найден")
 
 if not ADMIN_CHAT_ID:
-    raise ValueError("ADMIN_CHAT_ID не найден")
+    raise ValueError("❌ ADMIN_CHAT_ID не найден")
+
+ADMIN_CHAT_ID = int(ADMIN_CHAT_ID)
 
 
-# ======================================================
+# =========================================================
 # LOGGING
-# ======================================================
+# =========================================================
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,9 +56,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ======================================================
+# =========================================================
 # BOT
-# ======================================================
+# =========================================================
 
 bot = Bot(
     token=BOT_TOKEN,
@@ -66,35 +70,29 @@ bot = Bot(
 dp = Dispatcher(storage=MemoryStorage())
 
 
-# ======================================================
+# =========================================================
 # DATABASE
-# ======================================================
+# =========================================================
 
-DB_NAME = "applications.db"
+conn = sqlite3.connect("applications.db")
+cursor = conn.cursor()
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER,
+    username TEXT,
+    phone TEXT,
+    name TEXT,
+    email TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
 
-async def init_db():
-
-    async with aiosqlite.connect(DB_NAME) as db:
-
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS applications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            telegram_id INTEGER,
-            username TEXT,
-            phone TEXT,
-            name TEXT,
-            email TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        await db.commit()
-
-    logger.info("✅ Database initialized")
+conn.commit()
 
 
-async def save_application(
+def save_application(
     telegram_id,
     username,
     phone,
@@ -102,39 +100,41 @@ async def save_application(
     email
 ):
 
-    async with aiosqlite.connect(DB_NAME) as db:
+    conn = sqlite3.connect("applications.db")
+    cursor = conn.cursor()
 
-        await db.execute("""
-        INSERT INTO applications (
-            telegram_id,
-            username,
-            phone,
-            name,
-            email
-        )
-        VALUES (?, ?, ?, ?, ?)
-        """, (
-            telegram_id,
-            username,
-            phone,
-            name,
-            email
-        ))
+    cursor.execute("""
+    INSERT INTO applications (
+        telegram_id,
+        username,
+        phone,
+        name,
+        email
+    )
+    VALUES (?, ?, ?, ?, ?)
+    """, (
+        telegram_id,
+        username,
+        phone,
+        name,
+        email
+    ))
 
-        await db.commit()
+    conn.commit()
+    conn.close()
 
 
-# ======================================================
+# =========================================================
 # REGEX
-# ======================================================
+# =========================================================
 
 PHONE_REGEX = r"^\+?[1-9]\d{7,14}$"
 EMAIL_REGEX = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 
-# ======================================================
+# =========================================================
 # FSM
-# ======================================================
+# =========================================================
 
 class ApplicationForm(StatesGroup):
 
@@ -143,9 +143,9 @@ class ApplicationForm(StatesGroup):
     waiting_for_email = State()
 
 
-# ======================================================
-# INLINE MENU
-# ======================================================
+# =========================================================
+# MENU
+# =========================================================
 
 main_menu = InlineKeyboardMarkup(
     inline_keyboard=[
@@ -180,11 +180,6 @@ main_menu = InlineKeyboardMarkup(
     ]
 )
 
-
-# ======================================================
-# BACK BUTTON
-# ======================================================
-
 back_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [
@@ -195,11 +190,6 @@ back_keyboard = InlineKeyboardMarkup(
         ]
     ]
 )
-
-
-# ======================================================
-# CONTACT BUTTON
-# ======================================================
 
 contact_keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -215,9 +205,9 @@ contact_keyboard = ReplyKeyboardMarkup(
 )
 
 
-# ======================================================
+# =========================================================
 # RATES
-# ======================================================
+# =========================================================
 
 RATES = {
     "USD": 92.50,
@@ -227,15 +217,16 @@ RATES = {
 }
 
 
-# ======================================================
+# =========================================================
 # START
-# ======================================================
+# =========================================================
 
 @dp.message(Command("start"))
 async def start(message: Message):
 
     text = (
-        "Добро пожаловать 👋\n\n"
+        "👋 <b>Добро пожаловать</b>\n\n"
+
         "Международные платежи для бизнеса.\n"
         "Быстро. Надёжно. Без лишней бюрократии."
     )
@@ -246,15 +237,16 @@ async def start(message: Message):
     )
 
 
-# ======================================================
+# =========================================================
 # BACK
-# ======================================================
+# =========================================================
 
 @dp.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
 
     text = (
-        "Добро пожаловать 👋\n\n"
+        "👋 <b>Добро пожаловать</b>\n\n"
+
         "Международные платежи для бизнеса.\n"
         "Быстро. Надёжно. Без лишней бюрократии."
     )
@@ -267,9 +259,9 @@ async def back(callback: CallbackQuery):
     await callback.answer()
 
 
-# ======================================================
-# FAST TRANSFERS
-# ======================================================
+# =========================================================
+# FAST
+# =========================================================
 
 @dp.callback_query(F.data == "fast")
 async def fast(callback: CallbackQuery):
@@ -294,9 +286,9 @@ async def fast(callback: CallbackQuery):
     await callback.answer()
 
 
-# ======================================================
+# =========================================================
 # RATES
-# ======================================================
+# =========================================================
 
 @dp.callback_query(F.data == "rates")
 async def rates(callback: CallbackQuery):
@@ -322,9 +314,9 @@ async def rates(callback: CallbackQuery):
     await callback.answer()
 
 
-# ======================================================
+# =========================================================
 # ABOUT
-# ======================================================
+# =========================================================
 
 @dp.callback_query(F.data == "about")
 async def about(callback: CallbackQuery):
@@ -352,9 +344,9 @@ async def about(callback: CallbackQuery):
     await callback.answer()
 
 
-# ======================================================
+# =========================================================
 # APPLICATION
-# ======================================================
+# =========================================================
 
 @dp.callback_query(F.data == "application")
 async def application(
@@ -383,9 +375,9 @@ async def application(
     await callback.answer()
 
 
-# ======================================================
+# =========================================================
 # PHONE
-# ======================================================
+# =========================================================
 
 @dp.message(ApplicationForm.waiting_for_phone)
 async def process_phone(
@@ -406,7 +398,7 @@ async def process_phone(
     if not re.match(PHONE_REGEX, phone):
 
         await message.answer(
-            "Некорректный номер телефона.\n\n"
+            "❌ Некорректный номер телефона\n\n"
             "Пример:\n"
             "+79991234567"
         )
@@ -420,14 +412,14 @@ async def process_phone(
     )
 
     await message.answer(
-        "Шаг 2 из 3\n\n"
+        "👤 Шаг 2 из 3\n\n"
         "Введите ваше имя"
     )
 
 
-# ======================================================
+# =========================================================
 # NAME
-# ======================================================
+# =========================================================
 
 @dp.message(ApplicationForm.waiting_for_name)
 async def process_name(
@@ -440,7 +432,7 @@ async def process_name(
     if len(name) < 2:
 
         await message.answer(
-            "Введите корректное имя"
+            "❌ Введите корректное имя"
         )
 
         return
@@ -452,15 +444,15 @@ async def process_name(
     )
 
     await message.answer(
-        "Шаг 3 из 3\n\n"
+        "📧 Шаг 3 из 3\n\n"
         "Введите email\n"
         "или отправьте «нет»"
     )
 
 
-# ======================================================
+# =========================================================
 # EMAIL
-# ======================================================
+# =========================================================
 
 @dp.message(ApplicationForm.waiting_for_email)
 async def process_email(
@@ -483,7 +475,7 @@ async def process_email(
         if not re.match(EMAIL_REGEX, email):
 
             await message.answer(
-                "Некорректный email"
+                "❌ Некорректный email"
             )
 
             return
@@ -501,7 +493,7 @@ async def process_email(
         else "Нет"
     )
 
-    await save_application(
+    save_application(
         telegram_id=message.from_user.id,
         username=username,
         phone=phone,
@@ -529,10 +521,7 @@ async def process_email(
     await message.answer(
         "✅ Заявка отправлена.\n\n"
         "Менеджер свяжется с вами в ближайшее время.",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[],
-            resize_keyboard=True
-        )
+        reply_markup=ReplyKeyboardRemove()
     )
 
     await message.answer(
@@ -541,9 +530,9 @@ async def process_email(
     )
 
 
-# ======================================================
+# =========================================================
 # CALC
-# ======================================================
+# =========================================================
 
 @dp.message(Command("calc"))
 async def calc(message: Message):
@@ -569,7 +558,7 @@ async def calc(message: Message):
         if from_currency not in RATES:
 
             await message.answer(
-                "Валюта не поддерживается"
+                "❌ Валюта не поддерживается"
             )
 
             return
@@ -577,7 +566,7 @@ async def calc(message: Message):
         if to_currency != "RUB":
 
             await message.answer(
-                "Пока доступен только RUB"
+                "❌ Пока доступен только RUB"
             )
 
             return
@@ -595,13 +584,13 @@ async def calc(message: Message):
         logger.error(e)
 
         await message.answer(
-            "Ошибка расчёта"
+            "❌ Ошибка расчёта"
         )
 
 
-# ======================================================
+# =========================================================
 # ORDER
-# ======================================================
+# =========================================================
 
 @dp.message(Command("order"))
 async def order(message: Message):
@@ -621,9 +610,9 @@ async def order(message: Message):
     await message.answer(text)
 
 
-# ======================================================
+# =========================================================
 # UNKNOWN
-# ======================================================
+# =========================================================
 
 @dp.message()
 async def unknown(message: Message):
@@ -634,23 +623,25 @@ async def unknown(message: Message):
     )
 
 
-# ======================================================
+# =========================================================
 # MAIN
-# ======================================================
+# =========================================================
 
 async def main():
 
-    logger.info("🚀 Bot started")
-
-    await init_db()
+    logger.info("🚀 Бот запущен")
 
     await bot.send_message(
         ADMIN_CHAT_ID,
-        "✅ Бот запущен"
+        "✅ Бот успешно запущен"
     )
 
     await dp.start_polling(bot)
 
+
+# =========================================================
+# START APP
+# =========================================================
 
 if __name__ == "__main__":
 
@@ -660,4 +651,4 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
 
-        print("Bot stopped")
+        print("❌ Бот остановлен")
