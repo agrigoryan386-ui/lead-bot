@@ -5,6 +5,9 @@ from flask import Flask
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 
 # ===== НАСТРОЙКИ =====
 BOT_TOKEN = "8901177637:AAEeFWoKm8X9P9LHeHPDQL_R4zbJISzX-rE"
@@ -13,9 +16,16 @@ ADMIN_CHAT_ID = "8804129581"
 
 logging.basicConfig(level=logging.INFO)
 
+storage = MemoryStorage()
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=storage)
 app = Flask(__name__)
+
+# Состояния для формы заявки
+class ApplicationForm(StatesGroup):
+    waiting_for_phone = State()
+    waiting_for_name = State()
+    waiting_for_email = State()
 
 # Клавиатура главного меню
 menu_keyboard = ReplyKeyboardMarkup(
@@ -67,16 +77,82 @@ async def option_2(message: types.Message):
     )
 
 @dp.message(lambda message: message.text == "📞 Оставить заявку")
-async def ask_contact(message: types.Message):
-    contact_keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
-        resize_keyboard=True
-    )
+async def ask_phone(message: types.Message, state: FSMContext):
+    await state.set_state(ApplicationForm.waiting_for_phone)
     await message.answer(
-        "📞 <b>Оставьте ваш номер телефона</b>\n\n"
-        "Наш менеджер свяжется с вами в ближайшее время.",
+        "📞 <b>Заполните форму заявки</b>\n\n"
+        "Поле 1/3: Введите ваш <b>номер телефона</b>\n\n"
+        "Пример: +7 916 357 94 15\n"
+        "Или просто нажмите кнопку 'Отправить номер' 👇",
         parse_mode="HTML",
-        reply_markup=contact_keyboard
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
+            resize_keyboard=True
+        )
+    )
+
+@dp.message(ApplicationForm.waiting_for_phone)
+async def process_phone(message: types.Message, state: FSMContext):
+    if message.contact:
+        phone = message.contact.phone_number
+    else:
+        phone = message.text.strip()
+    
+    await state.update_data(phone=phone)
+    await state.set_state(ApplicationForm.waiting_for_name)
+    await message.answer(
+        "✅ Номер телефона принят!\n\n"
+        "Поле 2/3: Введите ваше <b>имя</b> (обязательно)",
+        parse_mode="HTML",
+        reply_markup=menu_keyboard
+    )
+
+@dp.message(ApplicationForm.waiting_for_name)
+async def process_name(message: types.Message, state: FSMContext):
+    name = message.text.strip()
+    if len(name) < 2:
+        await message.answer("❌ Имя слишком короткое. Введите полное имя:")
+        return
+    
+    await state.update_data(name=name)
+    await state.set_state(ApplicationForm.waiting_for_email)
+    await message.answer(
+        "✅ Имя принято!\n\n"
+        "Поле 3/3: Введите ваш <b>email</b> (необязательно)\n\n"
+        "Если не хотите указывать email, отправьте 'нет' или '-'",
+        parse_mode="HTML"
+    )
+
+@dp.message(ApplicationForm.waiting_for_email)
+async def process_email(message: types.Message, state: FSMContext):
+    email = message.text.strip()
+    if email.lower() in ["нет", "-", "skip", "пропустить"]:
+        email = "Не указан"
+    
+    await state.update_data(email=email)
+    data = await state.get_data()
+    
+    phone = data.get('phone')
+    name = data.get('name')
+    
+    admin_msg = (
+        f"🆕 <b>НОВАЯ ЗАЯВКА!</b>\n\n"
+        f"👤 <b>Имя:</b> {name}\n"
+        f"📱 <b>Телефон:</b> {phone}\n"
+        f"📧 <b>Email:</b> {email}\n"
+        f"🆔 <b>User ID:</b> {message.from_user.id}\n"
+        f"👤 <b>Username:</b> @{message.from_user.username if message.from_user.username else 'Нет'}\n"
+        f"🕒 <b>Время:</b> {message.date.strftime('%d.%m.%Y %H:%M:%S')}"
+    )
+    await bot.send_message(ADMIN_CHAT_ID, admin_msg, parse_mode="HTML")
+    
+    await state.clear()
+    await message.answer(
+        "✅ <b>Заявка успешно отправлена!</b>\n\n"
+        "Наш менеджер свяжется с вами в ближайшее время.\n\n"
+        "А пока можете ознакомиться с услугами в главном меню 👇",
+        parse_mode="HTML",
+        reply_markup=menu_keyboard
     )
 
 @dp.message(lambda message: message.text == "ℹ️ О компании")
@@ -152,29 +228,6 @@ async def calculate_rate(message: types.Message):
             
     except Exception as e:
         await message.answer("❌ Ошибка в расчёте. Проверьте формат.")
-
-@dp.message(lambda message: message.contact)
-async def get_contact(message: types.Message):
-    contact = message.contact
-    phone = contact.phone_number
-    name = contact.first_name
-    
-    admin_msg = (
-        f"🆕 <b>Новая заявка!</b>\n\n"
-        f"👤 Имя: {name}\n"
-        f"📱 Телефон: {phone}\n"
-        f"🆔 ID: {message.from_user.id}\n"
-        f"👤 Username: @{message.from_user.username if message.from_user.username else 'Нет'}"
-    )
-    await bot.send_message(ADMIN_CHAT_ID, admin_msg, parse_mode="HTML")
-    
-    await message.answer(
-        "✅ <b>Заявка принята!</b>\n\n"
-        "Менеджер свяжется с вами в ближайшее время.\n\n"
-        "А пока можете ознакомиться с услугами в главном меню 👇",
-        parse_mode="HTML",
-        reply_markup=menu_keyboard
-    )
 
 @dp.message()
 async def unknown(message: types.Message):
