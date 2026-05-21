@@ -71,7 +71,7 @@ async def option_2(message: types.Message):
         "📊 EUR → RUB: 100.20\n"
         "📊 CNY → RUB: 12.80\n"
         "📊 AED → RUB: 25.20\n\n"
-        "💡 Индивидуальный курс при сумме от 10 000 USD\n\n"
+        "💡 Индивидуальный курс при сумме от 150 000 USD\n\n"
         "Для расчёта точной суммы нажмите /calculate",
         parse_mode="HTML"
     )
