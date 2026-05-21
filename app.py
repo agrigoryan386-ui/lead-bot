@@ -59,6 +59,17 @@ def health():
     return "OK", 200
 
 # ----------------------------
+# ПОСТОЯННАЯ КНОПКА ГЛАВНОГО МЕНЮ
+# ----------------------------
+
+persistent_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🏠 Главное меню")]
+    ],
+    resize_keyboard=True
+)
+
+# ----------------------------
 # База данных (SQLite)
 # ----------------------------
 
@@ -230,6 +241,20 @@ async def get_ved_news():
     return news_text
 
 # ----------------------------
+# Обработчик постоянной кнопки
+# ----------------------------
+
+@dp.message(F.text == "🏠 Главное меню")
+async def persistent_menu_handler(message: Message, state: FSMContext):
+    await state.clear()
+    text = (
+        "👋 Добро пожаловать!\n\n"
+        "Международные платежи для бизнеса.\n"
+        "Быстро. Надёжно. Без лишней бюрократии."
+    )
+    await message.answer(text, reply_markup=main_menu)
+
+# ----------------------------
 # Обработчики команд
 # ----------------------------
 
@@ -249,7 +274,8 @@ async def order_start(message: Message, state: FSMContext):
         "📝 <b>Оформление перевода</b>\n\n"
         "Шаг 1 из 3 — введите сумму перевода:\n\n"
         "Пример: 5000",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=persistent_menu
     )
 
 @dp.message(OrderForm.waiting_for_amount)
@@ -272,7 +298,7 @@ async def order_amount(message: Message, state: FSMContext):
             reply_markup=currency_keyboard
         )
     except ValueError:
-        await message.answer("❌ Ошибка: введите число\n\nПример: 5000")
+        await message.answer("❌ Ошибка: введите число\n\nПример: 5000", reply_markup=persistent_menu)
 
 @dp.callback_query(F.data.startswith("order_curr_"))
 async def order_currency(callback: CallbackQuery, state: FSMContext):
@@ -293,7 +319,7 @@ async def order_currency(callback: CallbackQuery, state: FSMContext):
 async def order_country(message: Message, state: FSMContext):
     country = message.text.strip()
     if len(country) < 2:
-        await message.answer("❌ Введите корректное название страны")
+        await message.answer("❌ Введите корректное название страны", reply_markup=persistent_menu)
         return
     
     await state.update_data(country=country)
@@ -341,7 +367,8 @@ async def calc_start(message: Message, state: FSMContext):
     await state.set_state(CalculatorForm.waiting_for_amount)
     await message.answer(
         "💰 Калькулятор валют\n\n"
-        "Введите сумму в рублях, которую хотите конвертировать:"
+        "Введите сумму в рублях, которую хотите конвертировать:",
+        reply_markup=persistent_menu
     )
 
 @dp.message(CalculatorForm.waiting_for_amount)
@@ -365,7 +392,7 @@ async def calc_amount(message: Message, state: FSMContext):
             reply_markup=currency_keyboard
         )
     except ValueError:
-        await message.answer("❌ Ошибка: введите число")
+        await message.answer("❌ Ошибка: введите число", reply_markup=persistent_menu)
 
 @dp.callback_query(F.data == "calc_cancel")
 async def calc_cancel(callback: CallbackQuery, state: FSMContext):
@@ -540,22 +567,22 @@ async def process_phone(message: Message, state: FSMContext):
         phone = message.text.strip().replace(" ", "")
 
     if not re.match(PHONE_REGEX, phone):
-        await message.answer("❌ Некорректный номер. Пример: +79991234567")
+        await message.answer("❌ Некорректный номер. Пример: +79991234567", reply_markup=persistent_menu)
         return
 
     await state.update_data(phone=phone)
     await state.set_state(ApplicationForm.waiting_for_name)
-    await message.answer("Шаг 2 из 3 — ваше имя\n\nВведите ваше имя:", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Шаг 2 из 3 — ваше имя\n\nВведите ваше имя:", reply_markup=persistent_menu)
 
 @dp.message(ApplicationForm.waiting_for_name)
 async def process_name(message: Message, state: FSMContext):
     name = message.text.strip()
     if len(name) < 2:
-        await message.answer("❌ Введите корректное имя")
+        await message.answer("❌ Введите корректное имя", reply_markup=persistent_menu)
         return
     await state.update_data(name=name)
     await state.set_state(ApplicationForm.waiting_for_email)
-    await message.answer("Шаг 3 из 3 — email\n\nВведите email или отправьте «нет»")
+    await message.answer("Шаг 3 из 3 — email\n\nВведите email или отправьте «нет»", reply_markup=persistent_menu)
 
 @dp.message(ApplicationForm.waiting_for_email)
 async def process_email(message: Message, state: FSMContext):
@@ -564,7 +591,7 @@ async def process_email(message: Message, state: FSMContext):
         email = "Не указан"
     else:
         if not re.match(EMAIL_REGEX, email_raw):
-            await message.answer("❌ Некорректный email. Пример: name@domain.ru")
+            await message.answer("❌ Некорректный email. Пример: name@domain.ru", reply_markup=persistent_menu)
             return
         email = email_raw
 
