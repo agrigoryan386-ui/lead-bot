@@ -27,7 +27,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 import google.generativeai as genai
 import pdfplumber
-from PIL import Image
 
 # ----------------------------
 # Конфигурация
@@ -211,42 +210,55 @@ contact_keyboard = ReplyKeyboardMarkup(
 )
 
 # ----------------------------
-# Функция для анализа инвойса через Gemini + pdfplumber
+# Функция для анализа инвойса через Gemini + резервный парсинг
 # ----------------------------
 
 async def analyze_invoice(file_bytes, filename):
-    """Анализирует инвойс (PDF или изображение) через Google Gemini"""
+    """Анализирует инвойс (PDF или изображение) через Google Gemini + резервный метод"""
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        prompt = """Ты — эксперт по финансовым документам. Проанализируй этот инвойс (счёт).
-
-Извлеки следующую информацию:
-1. Сумму к оплате (только число)
-2. Валюту (USD, EUR, CNY, AED, RUB)
-3. Страну получателя (если указана)
-4. Краткое описание товара
-
-Ответь строго в формате JSON:
-{"amount": 50820.00, "currency": "EUR", "country": "Россия", "description": "Bondyram, полимерные материалы"}
-
-Если какое-то поле не удаётся определить, поставь null."""
-        
-        # Обработка PDF через pdfplumber
+        # Получаем текст из PDF для резервного анализа
+        pdf_text = ""
         if filename.lower().endswith('.pdf'):
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                # Берем первую страницу и конвертируем в изображение
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        pdf_text += text + "\n"
+        
+        # Конвертируем первую страницу в изображение
+        if filename.lower().endswith('.pdf'):
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                 first_page = pdf.pages[0]
                 img = first_page.to_image(resolution=200).original
-                
-                # Конвертируем PIL Image в bytes
                 img_byte_arr = io.BytesIO()
                 img.save(img_byte_arr, format='PNG')
                 img_byte_arr.seek(0)
                 image_data = img_byte_arr.getvalue()
         else:
-            # Для изображений используем как есть
             image_data = file_bytes
+        
+        # Улучшенный промпт
+        prompt = f"""
+Ты — эксперт по финансовым документам. Проанализируй этот инвойс.
+
+Найди в инвойсе следующие данные:
+
+1. СУММА К ОПЛАТЕ (Total) — ищи слова: Total, Итого, Всего, Balance Due, Amount Due
+2. ВАЛЮТА — ищи: USD, EUR, GBP, CNY, AED, RUB, Eur, $, €
+3. СТРАНА ПОЛУЧАТЕЛЯ (Bill To / Sold To) — ищи название страны
+4. ОПИСАНИЕ ТОВАРА — первые несколько слов из описания
+
+Твой ответ — ТОЛЬКО JSON без лишних слов:
+{{"amount": 50820.00, "currency": "EUR", "country": "Россия", "description": "Bondyram"}}
+
+Если не можешь найти сумму — используй значение из поля Total.
+Если не можешь определить валюту — поставь "USD" как значение по умолчанию.
+
+Текст из PDF для справки (если есть):
+{pdf_text[:2000]}
+"""
         
         # Отправляем в Gemini
         uploaded_file = genai.upload_file(
@@ -254,30 +266,43 @@ async def analyze_invoice(file_bytes, filename):
             mime_type="image/png"
         )
         
-        # Ждём обработки
         timeout = 0
         while uploaded_file.state.name == "PROCESSING" and timeout < 30:
             await asyncio.sleep(1)
             timeout += 1
             uploaded_file = genai.get_file(uploaded_file.name)
         
-        # Отправляем запрос
         response = model.generate_content([prompt, uploaded_file])
         
-        # Удаляем временный файл
         try:
             genai.delete_file(uploaded_file.name)
         except:
             pass
         
-        # Извлекаем JSON
-        import re
+        # Извлекаем JSON из ответа Gemini
         result_text = response.text
         json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
         if json_match:
             result = json.loads(json_match.group())
-            if result.get("amount"):
+            if result.get("amount") and result.get("currency"):
                 return result
+        
+        # Резервный метод: извлекаем данные из текста PDF регулярными выражениями
+        if pdf_text:
+            import re
+            # Ищем сумму в формате Total Eur 50,820.00
+            amount_match = re.search(r'(?:Total|TOTAL)\s*([A-Za-z]+)\s*([\d,]+\.?\d*)', pdf_text)
+            if amount_match:
+                currency = amount_match.group(1)
+                amount_str = amount_match.group(2).replace(',', '')
+                amount = float(amount_str)
+                # Ищем страну
+                country_match = re.search(r'Bill To:.*?(Москва|Russia|RF|Россия)', pdf_text, re.IGNORECASE)
+                country = country_match.group(1) if country_match else "Не указана"
+                # Ищем описание
+                desc_match = re.search(r'Description(.*?)Total', pdf_text, re.IGNORECASE | re.DOTALL)
+                description = desc_match.group(1).strip()[:100] if desc_match else "Товары"
+                return {"amount": amount, "currency": currency, "country": country, "description": description}
         
         return None
         
