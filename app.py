@@ -4,9 +4,8 @@ import asyncio
 import logging
 import sqlite3
 import json
-import aiohttp
+import io
 from datetime import datetime
-from io import BytesIO
 
 from flask import Flask
 from aiogram import Bot, Dispatcher, F
@@ -27,6 +26,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 import google.generativeai as genai
+import pdfplumber
+from PIL import Image
 
 # ----------------------------
 # Конфигурация
@@ -210,58 +211,74 @@ contact_keyboard = ReplyKeyboardMarkup(
 )
 
 # ----------------------------
-# Функция для анализа инвойса через Gemini
+# Функция для анализа инвойса через Gemini + pdfplumber
 # ----------------------------
 
 async def analyze_invoice(file_bytes, filename):
-    """Анализирует инвойс через Google Gemini"""
-    
+    """Анализирует инвойс (PDF или изображение) через Google Gemini"""
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        prompt = """Проанализируй этот инвойс (счёт). Извлеки следующую информацию:
+        prompt = """Ты — эксперт по финансовым документам. Проанализируй этот инвойс (счёт).
 
+Извлеки следующую информацию:
 1. Сумму к оплате (только число)
 2. Валюту (USD, EUR, CNY, AED, RUB)
 3. Страну получателя (если указана)
-4. Краткое описание (что за товар/услуга)
+4. Краткое описание товара
 
-Ответь строго в формате JSON без лишнего текста:
-{"amount": 1234.56, "currency": "USD", "country": "Германия", "description": "Оборудование"}
+Ответь строго в формате JSON:
+{"amount": 50820.00, "currency": "EUR", "country": "Россия", "description": "Bondyram, полимерные материалы"}
 
-Если что-то не удаётся определить, поставь null."""
+Если какое-то поле не удаётся определить, поставь null."""
         
-        # Определяем MIME-тип
+        # Обработка PDF через pdfplumber
         if filename.lower().endswith('.pdf'):
-            mime_type = "application/pdf"
-        elif filename.lower().endswith('.png'):
-            mime_type = "image/png"
-        elif filename.lower().endswith(('.jpg', '.jpeg')):
-            mime_type = "image/jpeg"
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                # Берем первую страницу и конвертируем в изображение
+                first_page = pdf.pages[0]
+                img = first_page.to_image(resolution=200).original
+                
+                # Конвертируем PIL Image в bytes
+                img_byte_arr = io.BytesIO()
+                img.save(img_byte_arr, format='PNG')
+                img_byte_arr.seek(0)
+                image_data = img_byte_arr.getvalue()
         else:
-            mime_type = "image/png"
+            # Для изображений используем как есть
+            image_data = file_bytes
         
-        # Загружаем файл в Gemini
-        uploaded_file = genai.upload_file(BytesIO(file_bytes), mime_type=mime_type)
+        # Отправляем в Gemini
+        uploaded_file = genai.upload_file(
+            io.BytesIO(image_data),
+            mime_type="image/png"
+        )
         
         # Ждём обработки
-        while uploaded_file.state.name == "PROCESSING":
+        timeout = 0
+        while uploaded_file.state.name == "PROCESSING" and timeout < 30:
             await asyncio.sleep(1)
+            timeout += 1
             uploaded_file = genai.get_file(uploaded_file.name)
         
         # Отправляем запрос
         response = model.generate_content([prompt, uploaded_file])
-        result_text = response.text
         
         # Удаляем временный файл
-        genai.delete_file(uploaded_file.name)
+        try:
+            genai.delete_file(uploaded_file.name)
+        except:
+            pass
         
         # Извлекаем JSON
         import re
+        result_text = response.text
         json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
         if json_match:
             result = json.loads(json_match.group())
-            return result
+            if result.get("amount"):
+                return result
+        
         return None
         
     except Exception as e:
@@ -350,10 +367,8 @@ async def process_invoice(message: Message, state: FSMContext):
             country = result.get("country", "Не указана")
             description = result.get("description", "Не указано")
             
-            # Сохраняем в БД
             save_invoice_check(message.from_user.id, username, amount, currency, country, description)
             
-            # Отправляем админу подробный отчёт
             admin_msg = (
                 f"🆕 <b>НОВЫЙ ИНВОЙС</b>\n\n"
                 f"👤 <b>Пользователь:</b> {username}\n"
@@ -371,7 +386,6 @@ async def process_invoice(message: Message, state: FSMContext):
                 reply_markup=persistent_menu
             )
         else:
-            # Отправляем админу на ручную проверку
             admin_msg = (
                 f"⚠️ <b>НЕ УДАЛОСЬ РАСПОЗНАТЬ ИНВОЙС</b>\n\n"
                 f"👤 <b>Пользователь:</b> {username}\n"
