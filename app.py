@@ -48,22 +48,13 @@ logger = logging.getLogger(__name__)
 # CONFIG
 # =========================================================
 
-BOT_TOKEN = os.getenv(
-    "BOT_TOKEN",
-    "ТВОЙ_BOT_TOKEN"
-)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_CHAT_ID = int(
-    os.getenv(
-        "ADMIN_CHAT_ID",
-        "ТВОЙ_ADMIN_ID"
-    )
+    os.getenv("ADMIN_CHAT_ID")
 )
 
-GEMINI_API_KEY = os.getenv(
-    "GEMINI_API_KEY",
-    "ТВОЙ_GEMINI_API_KEY"
-)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
 # =========================================================
