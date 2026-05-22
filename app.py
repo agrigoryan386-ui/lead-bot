@@ -3,7 +3,6 @@ import re
 import asyncio
 import logging
 import sqlite3
-import json
 import io
 from datetime import datetime
 
@@ -25,7 +24,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import google.generativeai as genai
 import pdfplumber
 
 # ----------------------------
@@ -34,10 +32,6 @@ import pdfplumber
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8901177637:AAEeFWoKm8X9P9LHeHPDQL_R4zbJISzX-rE")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "8804129581"))
-GEMINI_API_KEY = "AIzaSyDjzYeC2-O7un07n1Zu9GU9QfSJqcYoqkM"
-
-# Настраиваем Gemini
-genai.configure(api_key=GEMINI_API_KEY)
 
 # ----------------------------
 # Логирование
@@ -210,101 +204,68 @@ contact_keyboard = ReplyKeyboardMarkup(
 )
 
 # ----------------------------
-# Функция для анализа инвойса через Gemini + резервный парсинг
+# Функция для анализа инвойса (только парсинг, без ИИ)
 # ----------------------------
 
 async def analyze_invoice(file_bytes, filename):
-    """Анализирует инвойс (PDF или изображение) через Google Gemini + резервный метод"""
+    """Анализирует инвойс через парсинг PDF (без ИИ)"""
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        if not filename.lower().endswith('.pdf'):
+            return None
         
-        # Получаем текст из PDF для резервного анализа
-        pdf_text = ""
-        if filename.lower().endswith('.pdf'):
-            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        pdf_text += text + "\n"
+        # Извлекаем текст из PDF
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            full_text = ""
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    full_text += text + "\n"
         
-        # Конвертируем первую страницу в изображение
-        if filename.lower().endswith('.pdf'):
-            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                first_page = pdf.pages[0]
-                img = first_page.to_image(resolution=200).original
-                img_byte_arr = io.BytesIO()
-                img.save(img_byte_arr, format='PNG')
-                img_byte_arr.seek(0)
-                image_data = img_byte_arr.getvalue()
+        if not full_text:
+            return None
+        
+        # Ищем сумму: Total Eur 50,820.00
+        total_match = re.search(r'Total\s+([A-Za-z]+)\s+([\d,]+\.?\d*)', full_text, re.IGNORECASE)
+        if not total_match:
+            total_match = re.search(r'TOTAL\s+([A-Za-z]+)\s+([\d,]+\.?\d*)', full_text)
+        
+        if total_match:
+            currency = total_match.group(1).upper()
+            amount_str = total_match.group(2).replace(',', '')
+            amount = float(amount_str)
         else:
-            image_data = file_bytes
-        
-        # Улучшенный промпт
-        prompt = f"""
-Ты — эксперт по финансовым документам. Проанализируй этот инвойс.
-
-Найди в инвойсе следующие данные:
-
-1. СУММА К ОПЛАТЕ (Total) — ищи слова: Total, Итого, Всего, Balance Due, Amount Due
-2. ВАЛЮТА — ищи: USD, EUR, GBP, CNY, AED, RUB, Eur, $, €
-3. СТРАНА ПОЛУЧАТЕЛЯ (Bill To / Sold To) — ищи название страны
-4. ОПИСАНИЕ ТОВАРА — первые несколько слов из описания
-
-Твой ответ — ТОЛЬКО JSON без лишних слов:
-{{"amount": 50820.00, "currency": "EUR", "country": "Россия", "description": "Bondyram"}}
-
-Если не можешь найти сумму — используй значение из поля Total.
-Если не можешь определить валюту — поставь "USD" как значение по умолчанию.
-
-Текст из PDF для справки (если есть):
-{pdf_text[:2000]}
-"""
-        
-        # Отправляем в Gemini
-        uploaded_file = genai.upload_file(
-            io.BytesIO(image_data),
-            mime_type="image/png"
-        )
-        
-        timeout = 0
-        while uploaded_file.state.name == "PROCESSING" and timeout < 30:
-            await asyncio.sleep(1)
-            timeout += 1
-            uploaded_file = genai.get_file(uploaded_file.name)
-        
-        response = model.generate_content([prompt, uploaded_file])
-        
-        try:
-            genai.delete_file(uploaded_file.name)
-        except:
-            pass
-        
-        # Извлекаем JSON из ответа Gemini
-        result_text = response.text
-        json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-        if json_match:
-            result = json.loads(json_match.group())
-            if result.get("amount") and result.get("currency"):
-                return result
-        
-        # Резервный метод: извлекаем данные из текста PDF регулярными выражениями
-        if pdf_text:
-            import re
-            # Ищем сумму в формате Total Eur 50,820.00
-            amount_match = re.search(r'(?:Total|TOTAL)\s*([A-Za-z]+)\s*([\d,]+\.?\d*)', pdf_text)
+            # Альтернативный поиск
+            amount_match = re.search(r'([\d,]+\.?\d*)\s*(USD|EUR|CNY|AED|RUB)', full_text)
             if amount_match:
-                currency = amount_match.group(1)
-                amount_str = amount_match.group(2).replace(',', '')
+                amount_str = amount_match.group(1).replace(',', '')
                 amount = float(amount_str)
-                # Ищем страну
-                country_match = re.search(r'Bill To:.*?(Москва|Russia|RF|Россия)', pdf_text, re.IGNORECASE)
-                country = country_match.group(1) if country_match else "Не указана"
-                # Ищем описание
-                desc_match = re.search(r'Description(.*?)Total', pdf_text, re.IGNORECASE | re.DOTALL)
-                description = desc_match.group(1).strip()[:100] if desc_match else "Товары"
-                return {"amount": amount, "currency": currency, "country": country, "description": description}
+                currency = amount_match.group(2).upper()
+            else:
+                return None
         
-        return None
+        # Ищем страну получателя
+        country_match = re.search(r'Bill To:.*?([A-Za-z\s]+(?:RF|Russia|Москва|Russian))', full_text, re.IGNORECASE)
+        if not country_match:
+            country_match = re.search(r'Bill To:.*\n(.*?)(?:\n|$)', full_text)
+        
+        country = "Россия"  # Значение по умолчанию
+        if country_match:
+            country_text = country_match.group(1).strip()
+            if 'Russia' in country_text or 'RF' in country_text or 'Москва' in country_text:
+                country = "Россия"
+            else:
+                country = country_text[:50]
+        
+        # Ищем описание товара
+        desc_match = re.search(r'Description\s+([A-Za-z0-9\s-]+?)(?:\n|$)', full_text, re.IGNORECASE)
+        description = desc_match.group(1).strip()[:100] if desc_match else "Полимерные материалы"
+        
+        return {
+            "amount": amount,
+            "currency": currency,
+            "country": country,
+            "description": description
+        }
         
     except Exception as e:
         logger.error(f"Ошибка при анализе инвойса: {e}")
@@ -358,26 +319,23 @@ async def check_invoice_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(InvoiceForm.waiting_for_file)
     await callback.message.edit_text(
         "📄 <b>Проверка инвойса</b>\n\n"
-        "Отправьте файл с инвойсом (PDF, JPG, PNG)\n\n"
+        "Отправьте PDF-файл с инвойсом\n\n"
         "После анализа менеджер свяжется с вами.",
         parse_mode="HTML",
         reply_markup=back_keyboard
     )
     await callback.answer()
 
-@dp.message(InvoiceForm.waiting_for_file, F.document | F.photo)
+@dp.message(InvoiceForm.waiting_for_file, F.document)
 async def process_invoice(message: Message, state: FSMContext):
-    await message.answer("🔍 Анализирую инвойс... Это может занять до 30 секунд.", reply_markup=persistent_menu)
+    await message.answer("🔍 Анализирую инвойс... Это может занять до 10 секунд.", reply_markup=persistent_menu)
     
     try:
-        if message.document:
-            file_id = message.document.file_id
-            file_name = message.document.file_name or "инвойс"
-        elif message.photo:
-            file_id = message.photo[-1].file_id
-            file_name = "инвойс.jpg"
-        else:
-            await message.answer("❌ Пожалуйста, отправьте файл (PDF, JPG, PNG) или фото", reply_markup=persistent_menu)
+        file_id = message.document.file_id
+        file_name = message.document.file_name or "инвойс"
+        
+        if not file_name.lower().endswith('.pdf'):
+            await message.answer("❌ Пожалуйста, отправьте файл в формате PDF", reply_markup=persistent_menu)
             return
         
         file = await bot.get_file(file_id)
