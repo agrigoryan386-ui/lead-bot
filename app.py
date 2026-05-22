@@ -1,8 +1,102 @@
-    except Exception as e:
+import asyncio
+import logging
+import os
+import threading
+from flask import Flask
 
-        logger.error(f"NEWS ERROR: {e}")
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.filters import Command
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.memory import MemoryStorage
 
-        return "❌ Не удалось загрузить новости"
+
+# =========================================================
+# CONFIG
+# =========================================================
+
+BOT_TOKEN = "YOUR_BOT_TOKEN"
+ADMIN_CHAT_ID = 123456789
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
+
+app = Flask(__name__)
+
+
+# =========================================================
+# MOCK DATA / PLACEHOLDERS
+# =========================================================
+
+RATES = {
+    "USD": 92.5,
+    "EUR": 100.2,
+    "CNY": 12.8,
+    "AED": 25.1
+}
+
+WELCOME_TEXT = "👋 Добро пожаловать в сервис международных переводов"
+
+
+# =========================================================
+# KEYBOARDS
+# =========================================================
+
+main_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="⚡ Переводы")],
+        [KeyboardButton(text="💱 Курсы"), KeyboardButton(text="🏢 О нас")],
+        [KeyboardButton(text="📰 Новости"), KeyboardButton(text="📩 Заявка")]
+    ],
+    resize_keyboard=True
+)
+
+persistent_menu = main_menu
+
+back_keyboard = None
+
+contact_keyboard = ReplyKeyboardMarkup(
+    keyboard=[[KeyboardButton(text="📞 Отправить контакт", request_contact=True)]],
+    resize_keyboard=True
+)
+
+
+# =========================================================
+# FSM STATES
+# =========================================================
+
+class ApplicationForm(StatesGroup):
+    waiting_for_phone = State()
+    waiting_for_name = State()
+    waiting_for_email = State()
+
+
+class InvoiceForm(StatesGroup):
+    waiting_for_file = State()
+
+
+# =========================================================
+# MOCK FUNCTIONS (ЗАГЛУШКИ)
+# =========================================================
+
+async def analyze_invoice(file_bytes, filename):
+    return {"amount": 1000, "currency": "USD"}
+
+
+async def get_ved_news():
+    return "📰 Новости временно недоступны"
+
+
+def save_application(user_id, username, phone, name, email):
+    logger.info(f"Saved application: {user_id}, {phone}, {name}, {email}")
+
+
+def save_invoice_check(user_id, username, amount, currency):
+    logger.info(f"Saved invoice: {user_id}, {amount} {currency}")
 
 
 # =========================================================
@@ -11,416 +105,136 @@
 
 @dp.message(Command("start"))
 async def start(message: Message):
-
-    await message.answer(
-        WELCOME_TEXT,
-        reply_markup=persistent_menu
-    )
-
-    await message.answer(
-        "Главное меню:",
-        reply_markup=main_menu
-    )
+    await message.answer(WELCOME_TEXT)
+    await message.answer("Главное меню:", reply_markup=main_menu)
 
 
 # =========================================================
-# MAIN MENU BUTTON
+# MAIN MENU RESET
 # =========================================================
 
 @dp.message(F.text == "🏠 Главное меню")
-async def main_menu_handler(
-    message: Message,
-    state: FSMContext
-):
-
+async def main_menu_handler(message: Message, state: FSMContext):
     await state.clear()
-
-    await message.answer(
-        WELCOME_TEXT,
-        reply_markup=persistent_menu
-    )
-
-    await message.answer(
-        "Главное меню:",
-        reply_markup=main_menu
-    )
+    await message.answer(WELCOME_TEXT)
+    await message.answer("Главное меню:", reply_markup=main_menu)
 
 
 # =========================================================
 # FAST PAYMENTS
 # =========================================================
 
-@dp.callback_query(F.data == "fast")
-async def fast(callback: CallbackQuery):
-
-    text = """
-<b>⚡ Международный перевод</b>
-
-━━━━━━━━━━━━━━━
-
-🌍 Переводы в 50+ стран
-
-🏦 SWIFT / агентские схемы
-
-⚡ Зачисление 2–3 дня
-
-💱 Любые основные валюты
-
-🔒 Надёжное сопровождение
-
-━━━━━━━━━━━━━━━
-
-Для оформления заявки:
-@your_manager
-"""
-
-    await callback.message.edit_text(
-        text,
-        reply_markup=back_keyboard
+@dp.message(F.text == "⚡ Переводы")
+async def fast(message: Message):
+    await message.answer(
+        "⚡ Переводы в 50+ стран\nSWIFT / агенты\n2–3 дня"
     )
-
-    await callback.answer()
 
 
 # =========================================================
 # RATES
 # =========================================================
 
-@dp.callback_query(F.data == "rates")
-async def rates(callback: CallbackQuery):
-
-    text = f"""
-<b>💱 Курсы валют</b>
-
-━━━━━━━━━━━━━━━
-
-🇺🇸 USD — {RATES['USD']} ₽
-
-🇪🇺 EUR — {RATES['EUR']} ₽
-
-🇨🇳 CNY — {RATES['CNY']} ₽
-
-🇦🇪 AED — {RATES['AED']} ₽
-
-━━━━━━━━━━━━━━━
-
-💡 Индивидуальный курс
-от 50 000 USD
-"""
-
-    await callback.message.edit_text(
-        text,
-        reply_markup=back_keyboard
+@dp.message(F.text == "💱 Курсы")
+async def rates(message: Message):
+    await message.answer(
+        f"USD: {RATES['USD']}\nEUR: {RATES['EUR']}\nCNY: {RATES['CNY']}"
     )
-
-    await callback.answer()
 
 
 # =========================================================
 # ABOUT
 # =========================================================
 
-@dp.callback_query(F.data == "about")
-async def about(callback: CallbackQuery):
-
-    text = """
-<b>🏢 INNOVATION & LOGIC</b>
-
-━━━━━━━━━━━━━━━
-
-Финтех-решения
-для международного бизнеса.
-
-📍 Москва
-
-🌍 Международные переводы
-
-📄 ВЭД сопровождение
-
-🏦 SWIFT платежи
-
-━━━━━━━━━━━━━━━
-
-📞 +7 (495) 129-90-90
-
-✉ info@il-2.ru
-"""
-
-    await callback.message.edit_text(
-        text,
-        reply_markup=back_keyboard
-    )
-
-    await callback.answer()
+@dp.message(F.text == "🏢 О нас")
+async def about(message: Message):
+    await message.answer("Финтех компания. Переводы и ВЭД сопровождение.")
 
 
 # =========================================================
 # NEWS
 # =========================================================
 
-@dp.callback_query(F.data == "news")
-async def news(callback: CallbackQuery):
-
-    await callback.message.edit_text(
-        "📰 Загружаю новости...",
-        reply_markup=back_keyboard
-    )
-
+@dp.message(F.text == "📰 Новости")
+async def news(message: Message):
+    await message.answer("📰 Загружаю новости...")
     news_text = await get_ved_news()
+    await message.answer(news_text)
 
-    await callback.message.edit_text(
-        news_text,
-        reply_markup=back_keyboard
+
+# =========================================================
+# APPLICATION FLOW
+# =========================================================
+
+@dp.message(F.text == "📩 Заявка")
+async def application_start(message: Message, state: FSMContext):
+    await state.set_state(ApplicationForm.waiting_for_phone)
+    await message.answer("Введите телефон:")
+
+
+@dp.message(ApplicationForm.waiting_for_phone)
+async def process_phone(message: Message, state: FSMContext):
+
+    phone = message.contact.phone_number if message.contact else message.text
+    await state.update_data(phone=phone)
+
+    await state.set_state(ApplicationForm.waiting_for_name)
+    await message.answer("Введите имя:")
+
+
+@dp.message(ApplicationForm.waiting_for_name)
+async def process_name(message: Message, state: FSMContext):
+
+    await state.update_data(name=message.text)
+    await state.set_state(ApplicationForm.waiting_for_email)
+
+    await message.answer("Введите email:")
+
+
+@dp.message(ApplicationForm.waiting_for_email)
+async def process_email(message: Message, state: FSMContext):
+
+    data = await state.get_data()
+
+    save_application(
+        message.from_user.id,
+        str(message.from_user.username),
+        data["phone"],
+        data["name"],
+        message.text
     )
 
-    await callback.answer()
+    await bot.send_message(
+        ADMIN_CHAT_ID,
+        f"Новая заявка:\n{data['name']}\n{data['phone']}\n{message.text}"
+    )
+
+    await message.answer("✅ Заявка отправлена")
+    await state.clear()
 
 
 # =========================================================
 # INVOICE CHECK
 # =========================================================
 
-@dp.callback_query(F.data == "check_invoice")
-async def check_invoice_start(
-    callback: CallbackQuery,
-    state: FSMContext
-):
+@dp.message(F.document)
+async def invoice(message: Message, state: FSMContext):
 
-    await state.set_state(
-        InvoiceForm.waiting_for_file
-    )
+    await message.answer("🔍 Обрабатываю файл...")
 
-    await callback.message.edit_text(
-        """
-<b>📄 Проверка инвойса</b>
+    file = await bot.get_file(message.document.file_id)
+    downloaded = await bot.download_file(file.file_path)
 
-━━━━━━━━━━━━━━━
+    result = await analyze_invoice(downloaded.read(), message.document.file_name)
 
-Отправьте PDF файл.
-
-Система автоматически
-проанализирует документ.
-""",
-        reply_markup=back_keyboard
-    )
-
-    await callback.answer()
-
-
-@dp.message(
-    InvoiceForm.waiting_for_file,
-    F.document
-)
-async def process_invoice(
-    message: Message,
-    state: FSMContext
-):
-
-    await message.answer(
-        "🔍 Анализирую документ..."
-    )
-
-    try:
-
-        file = await bot.get_file(
-            message.document.file_id
-        )
-
-        downloaded = await bot.download_file(
-            file.file_path
-        )
-
-        result = await analyze_invoice(
-            downloaded.read(),
-            message.document.file_name
-        )
-
-        username = (
-            f"@{message.from_user.username}"
-            if message.from_user.username
-            else str(message.from_user.id)
-        )
-
-        if result:
-
-            save_invoice_check(
-                message.from_user.id,
-                username,
-                result["amount"],
-                result["currency"]
-            )
-
-            await bot.send_message(
-                ADMIN_CHAT_ID,
-                f"""
-🆕 Новый инвойс
-
-👤 {username}
-
-💰 {result['amount']} {result['currency']}
-"""
-            )
-
-            await message.answer(
-                """
-✅ Инвойс получен.
-
-Менеджер свяжется с вами.
-"""
-            )
-
-        else:
-
-            await message.answer(
-                """
-⚠ Не удалось распознать PDF.
-
-Менеджер проверит вручную.
-"""
-            )
-
-    except Exception as e:
-
-        logger.error(f"INVOICE ERROR: {e}")
-
-        await message.answer(
-            "❌ Ошибка обработки файла"
-        )
-
-    await state.clear()
-
-
-# =========================================================
-# APPLICATION
-# =========================================================
-
-@dp.callback_query(F.data == "application")
-async def application(
-    callback: CallbackQuery,
-    state: FSMContext
-):
-
-    await state.set_state(
-        ApplicationForm.waiting_for_phone
-    )
-
-    await callback.message.answer(
-        """
-📩 Оставить заявку
-
-Шаг 1 из 3
-
-Введите телефон
-или нажмите кнопку ниже 👇
-""",
-        reply_markup=contact_keyboard
-    )
-
-    await callback.answer()
-
-
-@dp.message(ApplicationForm.waiting_for_phone)
-async def process_phone(
-    message: Message,
-    state: FSMContext
-):
-
-    if message.contact:
-        phone = message.contact.phone_number
-    else:
-        phone = message.text.strip()
-
-    await state.update_data(
-        phone=phone
-    )
-
-    await state.set_state(
-        ApplicationForm.waiting_for_name
-    )
-
-    await message.answer(
-        "Введите ваше имя:"
-    )
-
-
-@dp.message(ApplicationForm.waiting_for_name)
-async def process_name(
-    message: Message,
-    state: FSMContext
-):
-
-    await state.update_data(
-        name=message.text.strip()
-    )
-
-    await state.set_state(
-        ApplicationForm.waiting_for_email
-    )
-
-    await message.answer(
-        "Введите email:"
-    )
-
-
-@dp.message(ApplicationForm.waiting_for_email)
-async def process_email(
-    message: Message,
-    state: FSMContext
-):
-
-    data = await state.get_data()
-
-    username = (
-        f"@{message.from_user.username}"
-        if message.from_user.username
-        else str(message.from_user.id)
-    )
-
-    save_application(
+    save_invoice_check(
         message.from_user.id,
-        username,
-        data["phone"],
-        data["name"],
-        message.text.strip()
+        str(message.from_user.username),
+        result["amount"],
+        result["currency"]
     )
 
-    await bot.send_message(
-        ADMIN_CHAT_ID,
-        f"""
-🆕 Новая заявка
-
-👤 {data['name']}
-
-📞 {data['phone']}
-
-✉ {message.text.strip()}
-"""
-    )
-
-    await message.answer(
-        """
-✅ Заявка отправлена.
-
-Менеджер скоро свяжется.
-"""
-    )
-
-    await state.clear()
-
-
-# =========================================================
-# BACK
-# =========================================================
-
-@dp.callback_query(F.data == "back")
-async def back(callback: CallbackQuery):
-
-    await callback.message.edit_text(
-        WELCOME_TEXT,
-        reply_markup=main_menu
-    )
-
-    await callback.answer()
+    await message.answer(f"Инвойс: {result['amount']} {result['currency']}")
 
 
 # =========================================================
@@ -429,52 +243,35 @@ async def back(callback: CallbackQuery):
 
 @dp.message()
 async def unknown(message: Message):
-
-    await message.answer(
-        "Используйте меню ниже 👇"
-    )
-
-    await message.answer(
-        "Главное меню:",
-        reply_markup=main_menu
-    )
+    await message.answer("Используй меню 👇")
 
 
 # =========================================================
-# RUN
+# FLASK (KEEP ALIVE)
 # =========================================================
 
-async def start_bot():
-
-    await dp.start_polling(
-        bot,
-        handle_signals=False
-    )
+@app.route("/")
+def home():
+    return "BOT IS RUNNING"
 
 
 def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
-    port = int(
-        os.environ.get("PORT", 8080)
-    )
 
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
+# =========================================================
+# START BOT
+# =========================================================
+
+async def start_bot():
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
 
-    import threading
-
     logger.info("BOT STARTED")
 
-    threading.Thread(
-        target=run_flask,
-        daemon=True
-    ).start()
+    threading.Thread(target=run_flask, daemon=True).start()
 
-    asyncio.run(
-        start_bot()
-    )
+    asyncio.run(start_bot())
