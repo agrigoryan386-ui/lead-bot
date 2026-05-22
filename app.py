@@ -4,6 +4,7 @@ import asyncio
 import logging
 import sqlite3
 import io
+import json
 from datetime import datetime
 
 from flask import Flask
@@ -25,6 +26,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 import pdfplumber
+import google.generativeai as genai
 
 # ----------------------------
 # Конфигурация
@@ -32,6 +34,14 @@ import pdfplumber
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8901177637:AAEeFWoKm8X9P9LHeHPDQL_R4zbJISzX-rE")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "8804129581"))
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyCnf6FUrGPZ0ZQ1sZE0OVebGec8b9ZXiNQ")
+
+# Настраиваем Gemini
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    logger.info("Gemini API настроен")
+else:
+    logger.warning("GEMINI_API_KEY не задан! Новости не будут работать.")
 
 # ----------------------------
 # Логирование
@@ -204,7 +214,7 @@ contact_keyboard = ReplyKeyboardMarkup(
 )
 
 # ----------------------------
-# Функция для анализа инвойса (только парсинг PDF)
+# Функция для анализа инвойса
 # ----------------------------
 
 async def analyze_invoice(file_bytes, filename):
@@ -213,7 +223,6 @@ async def analyze_invoice(file_bytes, filename):
         if not filename.lower().endswith('.pdf'):
             return None
         
-        # Извлекаем текст из PDF
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             full_text = ""
             for page in pdf.pages:
@@ -225,7 +234,6 @@ async def analyze_invoice(file_bytes, filename):
             logger.error("Не удалось извлечь текст из PDF")
             return None
         
-        # Ищем сумму: Total Eur 50,820.00
         total_match = re.search(r'Total\s+([A-Za-z]+)\s+([\d,]+\.?\d*)', full_text, re.IGNORECASE)
         if not total_match:
             total_match = re.search(r'TOTAL\s+([A-Za-z]+)\s+([\d,]+\.?\d*)', full_text)
@@ -235,7 +243,6 @@ async def analyze_invoice(file_bytes, filename):
             amount_str = total_match.group(2).replace(',', '')
             amount = float(amount_str)
         else:
-            # Альтернативный поиск
             amount_match = re.search(r'([\d,]+\.?\d*)\s*(USD|EUR|CNY|AED|RUB)', full_text)
             if amount_match:
                 amount_str = amount_match.group(1).replace(',', '')
@@ -256,22 +263,69 @@ async def analyze_invoice(file_bytes, filename):
         return None
 
 # ----------------------------
-# Функция для новостей
+# Функция для получения актуальных новостей ВЭД через ИИ
 # ----------------------------
 
 async def get_ved_news():
+    """Получает свежие новости ВЭД через Google Gemini (за последний день)"""
+    
+    if not GEMINI_API_KEY:
+        return "❌ API ключ не настроен. Обратитесь к администратору."
+    
     today = datetime.now().strftime("%d.%m.%Y")
-    news_items = [
-        {"title": "99% расчётов РФ–Китай в рублях и юанях", "summary": "Доля национальных валют во взаимной торговле достигла рекордных 99%.", "source": "РБК"},
-        {"title": "ЕС ввёл санкции против платежных агентов", "summary": "20-й пакет санкций ЕС впервые затронул небанковских операторов.", "source": "РБК"},
-        {"title": "Доля рубля в экспорте РФ достигла рекордных 64,9%", "summary": "В марте 2026 года доля рубля в экспортных расчётах обновила максимум.", "source": "Интерфакс"},
-        {"title": "Вектор на Восток: роль Ближнего Востока в ВЭД растёт", "summary": "Исламский мир становится ключевым направлением для российских расчётов.", "source": "РБК"},
-        {"title": "Новые правила валютного контроля с 2026 года", "summary": "Банки переходят на риск-ориентированный подход и автоматизацию.", "source": "РБК"}
-    ]
-    news_text = f"📰 <b>Новости ВЭД и международных платежей</b>\n\nСводка за {today}\n\n" + "─" * 30 + "\n\n"
-    for i, item in enumerate(news_items, 1):
-        news_text += f"<b>{i}. {item['title']}</b>\n{item['summary']}\n<i>Источник: {item['source']}</i>\n\n" + "─" * 30 + "\n\n"
-    return news_text
+    
+    prompt = f"""Ты — профессиональный финансовый аналитик. Найди 5 самых актуальных новостей по темам:
+- ВЭД (внешнеэкономическая деятельность)
+- международные платежи и переводы
+- трансграничные расчеты
+- валютное регулирование
+- санкции и их влияние на платежи
+
+Важные условия:
+1. Новости должны быть за ПОСЛЕДНИЙ ДЕНЬ (за {today})
+2. Упор на Россию, но можно добавить 1-2 мировые новости
+3. Каждая новость должна быть актуальной и правдоподобной
+
+Ответь строго в формате JSON:
+{{
+  "news": [
+    {{"title": "Заголовок", "summary": "Краткое содержание (1-2 предложения)", "source": "Источник"}},
+    ...
+  ]
+}}
+
+Если новостей за последний день недостаточно, используй новости за последние 2-3 дня, но укажи дату."""
+    
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(prompt)
+        
+        result_text = response.text
+        json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+        
+        if json_match:
+            data = json.loads(json_match.group())
+            news_items = data.get("news", [])
+            
+            if news_items:
+                news_text = f"📰 <b>Новости ВЭД и международных платежей</b>\n\n"
+                news_text += f"Актуальные новости за {today}\n\n"
+                news_text += "─" * 30 + "\n\n"
+                
+                for i, item in enumerate(news_items, 1):
+                    news_text += f"<b>{i}. {item['title']}</b>\n"
+                    news_text += f"{item['summary']}\n"
+                    news_text += f"<i>Источник: {item.get('source', 'Эксперт')}</i>\n\n"
+                    news_text += "─" * 30 + "\n\n"
+                
+                news_text += "💡 <i>Новости обновляются каждый день через ИИ</i>"
+                return news_text
+        
+        return f"📰 <b>Новости ВЭД</b>\n\n{result_text[:2000]}"
+        
+    except Exception as e:
+        logger.error(f"Ошибка при получении новостей: {e}")
+        return "❌ Не удалось загрузить актуальные новости. Попробуйте позже."
 
 # ----------------------------
 # Обработчик постоянной кнопки
@@ -358,8 +412,7 @@ async def process_invoice(message: Message, state: FSMContext):
                 f"⚠️ <b>НЕ УДАЛОСЬ РАСПОЗНАТЬ ИНВОЙС</b>\n\n"
                 f"👤 <b>Пользователь:</b> {username}\n"
                 f"📎 <b>Файл:</b> {file_name}\n"
-                f"🕒 <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n\n"
-                f"<b>Текст из PDF:</b>\n{result.get('debug_text', 'Не удалось извлечь текст')[:1000] if result else 'Нет данных'}"
+                f"🕒 <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
             )
             await bot.send_message(ADMIN_CHAT_ID, admin_msg, parse_mode="HTML")
             
@@ -438,13 +491,13 @@ async def about(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "news")
 async def news(callback: CallbackQuery):
-    await callback.message.edit_text("📰 Загружаю новости...", reply_markup=back_keyboard)
+    await callback.message.edit_text("📰 Загружаю актуальные новости ВЭД...\n\nПожалуйста, подождите.", reply_markup=back_keyboard)
     try:
         news_text = await get_ved_news()
         await callback.message.edit_text(news_text, reply_markup=back_keyboard)
     except Exception as e:
         logger.error(f"Ошибка: {e}")
-        await callback.message.edit_text("❌ Не удалось загрузить новости.", reply_markup=back_keyboard)
+        await callback.message.edit_text("❌ Не удалось загрузить новости.\n\nПопробуйте позже.", reply_markup=back_keyboard)
     await callback.answer()
 
 # ----------------------------
