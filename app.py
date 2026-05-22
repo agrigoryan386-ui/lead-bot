@@ -3,7 +3,6 @@ import re
 import asyncio
 import logging
 import sqlite3
-import base64
 import json
 import aiohttp
 from datetime import datetime
@@ -27,16 +26,18 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
+import google.generativeai as genai
+
 # ----------------------------
 # Конфигурация
 # ----------------------------
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8901177637:AAEeFWoKm8X9P9LHeHPDQL_R4zbJISzX-rE")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "8804129581"))
+GEMINI_API_KEY = "AIzaSyDjzYeC2-O7un07n1Zu9GU9QfSJqcYoqkM"
 
-# API для ИИ (OpenRouter бесплатный ключ)
-AI_API_KEY = os.getenv("AI_API_KEY", "")  # Вставь свой ключ в Render
-AI_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Настраиваем Gemini
+genai.configure(api_key=GEMINI_API_KEY)
 
 # ----------------------------
 # Логирование
@@ -67,7 +68,7 @@ def health():
     return "OK", 200
 
 # ----------------------------
-# ПОСТОЯННАЯ КНОПКА ГЛАВНОГО МЕНЮ
+# ПОСТОЯННАЯ КНОПКА
 # ----------------------------
 
 persistent_menu = ReplyKeyboardMarkup(
@@ -92,31 +93,98 @@ def init_db():
             amount REAL,
             currency TEXT,
             country TEXT,
-            analysis TEXT,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER,
+            username TEXT,
+            phone TEXT,
+            name TEXT,
+            email TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS order_applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER,
+            username TEXT,
+            amount REAL,
+            currency TEXT,
+            country TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     conn.commit()
     conn.close()
 
-def save_invoice_check(telegram_id, username, amount, currency, country, analysis):
+def save_invoice_check(telegram_id, username, amount, currency, country, description):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO invoice_checks (telegram_id, username, amount, currency, country, analysis)
+        INSERT INTO invoice_checks (telegram_id, username, amount, currency, country, description)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, (telegram_id, username, amount, currency, country, analysis))
+    """, (telegram_id, username, amount, currency, country, description))
+    conn.commit()
+    conn.close()
+
+def save_application(telegram_id, username, phone, name, email):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO applications (telegram_id, username, phone, name, email)
+        VALUES (?, ?, ?, ?, ?)
+    """, (telegram_id, username, phone, name, email))
+    conn.commit()
+    conn.close()
+
+def save_order_application(telegram_id, username, amount, currency, country):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO order_applications (telegram_id, username, amount, currency, country)
+        VALUES (?, ?, ?, ?, ?)
+    """, (telegram_id, username, amount, currency, country))
     conn.commit()
     conn.close()
 
 init_db()
 
 # ----------------------------
-# FSM для проверки инвойса
+# FSM
 # ----------------------------
 
 class InvoiceForm(StatesGroup):
     waiting_for_file = State()
+
+class ApplicationForm(StatesGroup):
+    waiting_for_phone = State()
+    waiting_for_name = State()
+    waiting_for_email = State()
+
+class OrderForm(StatesGroup):
+    waiting_for_amount = State()
+    waiting_for_currency = State()
+    waiting_for_country = State()
+
+class CalculatorForm(StatesGroup):
+    waiting_for_amount = State()
+    waiting_for_currency = State()
+
+# ----------------------------
+# Курсы валют
+# ----------------------------
+
+RATES = {
+    "USD": 92.50,
+    "EUR": 100.20,
+    "CNY": 12.80,
+    "AED": 25.20
+}
 
 # ----------------------------
 # Клавиатуры
@@ -142,74 +210,60 @@ contact_keyboard = ReplyKeyboardMarkup(
 )
 
 # ----------------------------
-# Курсы валют (для справки)
-# ----------------------------
-
-RATES = {
-    "USD": 92.50,
-    "EUR": 100.20,
-    "CNY": 12.80,
-    "AED": 25.20
-}
-
-# ----------------------------
-# Функция для анализа инвойса через ИИ
+# Функция для анализа инвойса через Gemini
 # ----------------------------
 
 async def analyze_invoice(file_bytes, filename):
-    """Отправляет файл в нейросеть для распознавания"""
-    
-    file_base64 = base64.b64encode(file_bytes).decode("utf-8")
-    
-    if filename.endswith('.pdf'):
-        mime_type = "application/pdf"
-    elif filename.endswith('.png'):
-        mime_type = "image/png"
-    elif filename.endswith('.jpg') or filename.endswith('.jpeg'):
-        mime_type = "image/jpeg"
-    else:
-        mime_type = "application/octet-stream"
-    
-    prompt = """Проанализируй этот инвойс (счёт) и извлеки:
-1. Общую сумму к оплате (только цифру)
-2. Валюту (USD, EUR, CNY, AED, RUB)
-3. Страну получателя (если указана)
-4. Краткое описание товара/услуги
-
-Ответь строго в формате JSON:
-{"amount": 1234.56, "currency": "USD", "country": "Германия", "description": "Оборудование"}
-
-Если какое-то поле не удаётся определить, поставь null.
-"""
-    
-    headers = {
-        "Authorization": f"Bearer {AI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": "google/gemini-2.0-flash-lite-preview-02-05:free",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{file_base64}"}}
-                ]
-            }
-        ],
-        "temperature": 0.1
-    }
+    """Анализирует инвойс через Google Gemini"""
     
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(AI_API_URL, headers=headers, json=payload, timeout=60) as response:
-                data = await response.json()
-                result_text = data["choices"][0]["message"]["content"]
-                json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-                if json_match:
-                    return json.loads(json_match.group())
-                return None
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        prompt = """Проанализируй этот инвойс (счёт). Извлеки следующую информацию:
+
+1. Сумму к оплате (только число)
+2. Валюту (USD, EUR, CNY, AED, RUB)
+3. Страну получателя (если указана)
+4. Краткое описание (что за товар/услуга)
+
+Ответь строго в формате JSON без лишнего текста:
+{"amount": 1234.56, "currency": "USD", "country": "Германия", "description": "Оборудование"}
+
+Если что-то не удаётся определить, поставь null."""
+        
+        # Определяем MIME-тип
+        if filename.lower().endswith('.pdf'):
+            mime_type = "application/pdf"
+        elif filename.lower().endswith('.png'):
+            mime_type = "image/png"
+        elif filename.lower().endswith(('.jpg', '.jpeg')):
+            mime_type = "image/jpeg"
+        else:
+            mime_type = "image/png"
+        
+        # Загружаем файл в Gemini
+        uploaded_file = genai.upload_file(BytesIO(file_bytes), mime_type=mime_type)
+        
+        # Ждём обработки
+        while uploaded_file.state.name == "PROCESSING":
+            await asyncio.sleep(1)
+            uploaded_file = genai.get_file(uploaded_file.name)
+        
+        # Отправляем запрос
+        response = model.generate_content([prompt, uploaded_file])
+        result_text = response.text
+        
+        # Удаляем временный файл
+        genai.delete_file(uploaded_file.name)
+        
+        # Извлекаем JSON
+        import re
+        json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group())
+            return result
+        return None
+        
     except Exception as e:
         logger.error(f"Ошибка при анализе инвойса: {e}")
         return None
@@ -227,7 +281,6 @@ async def get_ved_news():
         {"title": "Вектор на Восток: роль Ближнего Востока в ВЭД растёт", "summary": "Исламский мир становится ключевым направлением для российских расчётов.", "source": "РБК"},
         {"title": "Новые правила валютного контроля с 2026 года", "summary": "Банки переходят на риск-ориентированный подход и автоматизацию.", "source": "РБК"}
     ]
-    
     news_text = f"📰 <b>Новости ВЭД и международных платежей</b>\n\nСводка за {today}\n\n" + "─" * 30 + "\n\n"
     for i, item in enumerate(news_items, 1):
         news_text += f"<b>{i}. {item['title']}</b>\n{item['summary']}\n<i>Источник: {item['source']}</i>\n\n" + "─" * 30 + "\n\n"
@@ -302,7 +355,7 @@ async def process_invoice(message: Message, state: FSMContext):
             
             # Отправляем админу подробный отчёт
             admin_msg = (
-                f"🆕 <b>НОВЫЙ ИНВОЙС НА ПРОВЕРКУ!</b>\n\n"
+                f"🆕 <b>НОВЫЙ ИНВОЙС</b>\n\n"
                 f"👤 <b>Пользователь:</b> {username}\n"
                 f"📄 <b>Сумма:</b> {amount:,.2f} {currency}\n"
                 f"🌍 <b>Страна:</b> {country}\n"
@@ -318,7 +371,7 @@ async def process_invoice(message: Message, state: FSMContext):
                 reply_markup=persistent_menu
             )
         else:
-            # Даже если не распознали, отправляем админу на ручную проверку
+            # Отправляем админу на ручную проверку
             admin_msg = (
                 f"⚠️ <b>НЕ УДАЛОСЬ РАСПОЗНАТЬ ИНВОЙС</b>\n\n"
                 f"👤 <b>Пользователь:</b> {username}\n"
@@ -407,7 +460,7 @@ async def news(callback: CallbackQuery):
         news_text = await get_ved_news()
         await callback.message.edit_text(news_text, reply_markup=back_keyboard)
     except Exception as e:
-        logger.error(f"Ошибка при получении новостей: {e}")
+        logger.error(f"Ошибка: {e}")
         await callback.message.edit_text("❌ Не удалось загрузить новости.", reply_markup=back_keyboard)
     await callback.answer()
 
@@ -424,15 +477,6 @@ async def application(callback: CallbackQuery, state: FSMContext):
         reply_markup=contact_keyboard
     )
     await callback.answer()
-
-# ----------------------------
-# FSM для заявки
-# ----------------------------
-
-class ApplicationForm(StatesGroup):
-    waiting_for_phone = State()
-    waiting_for_name = State()
-    waiting_for_email = State()
 
 @dp.message(ApplicationForm.waiting_for_phone)
 async def process_phone(message: Message, state: FSMContext):
@@ -473,12 +517,7 @@ async def process_email(message: Message, state: FSMContext):
     name = data["name"]
     username = f"@{message.from_user.username}" if message.from_user.username else "Нет"
     
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO applications (telegram_id, username, phone, name, email) VALUES (?, ?, ?, ?, ?)",
-                   (message.from_user.id, username, phone, name, email))
-    conn.commit()
-    conn.close()
+    save_application(message.from_user.id, username, phone, name, email)
     
     admin_text = f"🆕 Новая заявка\n\nИмя: {name}\nТелефон: {phone}\nEmail: {email}\nID: {message.from_user.id}\nUsername: {username}"
     await bot.send_message(ADMIN_CHAT_ID, admin_text)
@@ -489,11 +528,6 @@ async def process_email(message: Message, state: FSMContext):
 # ----------------------------
 # Оформление перевода /order
 # ----------------------------
-
-class OrderForm(StatesGroup):
-    waiting_for_amount = State()
-    waiting_for_currency = State()
-    waiting_for_country = State()
 
 @dp.message(Command("order"))
 async def order_start(message: Message, state: FSMContext):
@@ -538,12 +572,7 @@ async def order_country(message: Message, state: FSMContext):
     currency = data["currency"]
     username = f"@{message.from_user.username}" if message.from_user.username else f"ID{message.from_user.id}"
     
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO order_applications (telegram_id, username, amount, currency, country) VALUES (?, ?, ?, ?, ?)",
-                   (message.from_user.id, username, amount, currency, country))
-    conn.commit()
-    conn.close()
+    save_order_application(message.from_user.id, username, amount, currency, country)
     
     admin_msg = f"🆕 НОВАЯ ЗАЯВКА НА ПЕРЕВОД!\n\n💰 Сумма: {amount:,.2f} {currency}\n🌍 Страна: {country}\n👤 Пользователь: {username}\n🆔 ID: {message.from_user.id}"
     await bot.send_message(ADMIN_CHAT_ID, admin_msg)
@@ -560,10 +589,6 @@ async def order_cancel(callback: CallbackQuery, state: FSMContext):
 # ----------------------------
 # Калькулятор
 # ----------------------------
-
-class CalculatorForm(StatesGroup):
-    waiting_for_amount = State()
-    waiting_for_currency = State()
 
 @dp.message(Command("calc"))
 async def calc_start(message: Message, state: FSMContext):
@@ -640,6 +665,10 @@ async def back(callback: CallbackQuery):
 async def unknown(message: Message):
     await message.answer("Используйте меню ниже 👇", reply_markup=persistent_menu)
     await message.answer("Главное меню:", reply_markup=main_menu)
+
+# ----------------------------
+# Запуск
+# ----------------------------
 
 async def start_bot():
     await dp.start_polling(bot, handle_signals=False)
