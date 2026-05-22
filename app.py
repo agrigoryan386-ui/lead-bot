@@ -204,11 +204,11 @@ contact_keyboard = ReplyKeyboardMarkup(
 )
 
 # ----------------------------
-# Функция для анализа инвойса (только парсинг, без ИИ)
+# Функция для анализа инвойса (только парсинг PDF)
 # ----------------------------
 
 async def analyze_invoice(file_bytes, filename):
-    """Анализирует инвойс через парсинг PDF (без ИИ)"""
+    """Анализирует инвойс через парсинг PDF"""
     try:
         if not filename.lower().endswith('.pdf'):
             return None
@@ -222,6 +222,7 @@ async def analyze_invoice(file_bytes, filename):
                     full_text += text + "\n"
         
         if not full_text:
+            logger.error("Не удалось извлечь текст из PDF")
             return None
         
         # Ищем сумму: Total Eur 50,820.00
@@ -243,28 +244,11 @@ async def analyze_invoice(file_bytes, filename):
             else:
                 return None
         
-        # Ищем страну получателя
-        country_match = re.search(r'Bill To:.*?([A-Za-z\s]+(?:RF|Russia|Москва|Russian))', full_text, re.IGNORECASE)
-        if not country_match:
-            country_match = re.search(r'Bill To:.*\n(.*?)(?:\n|$)', full_text)
-        
-        country = "Россия"  # Значение по умолчанию
-        if country_match:
-            country_text = country_match.group(1).strip()
-            if 'Russia' in country_text or 'RF' in country_text or 'Москва' in country_text:
-                country = "Россия"
-            else:
-                country = country_text[:50]
-        
-        # Ищем описание товара
-        desc_match = re.search(r'Description\s+([A-Za-z0-9\s-]+?)(?:\n|$)', full_text, re.IGNORECASE)
-        description = desc_match.group(1).strip()[:100] if desc_match else "Полимерные материалы"
-        
         return {
             "amount": amount,
             "currency": currency,
-            "country": country,
-            "description": description
+            "country": "Россия",
+            "description": "Полимерные материалы"
         }
         
     except Exception as e:
@@ -336,6 +320,7 @@ async def process_invoice(message: Message, state: FSMContext):
         
         if not file_name.lower().endswith('.pdf'):
             await message.answer("❌ Пожалуйста, отправьте файл в формате PDF", reply_markup=persistent_menu)
+            await state.clear()
             return
         
         file = await bot.get_file(file_id)
@@ -373,7 +358,8 @@ async def process_invoice(message: Message, state: FSMContext):
                 f"⚠️ <b>НЕ УДАЛОСЬ РАСПОЗНАТЬ ИНВОЙС</b>\n\n"
                 f"👤 <b>Пользователь:</b> {username}\n"
                 f"📎 <b>Файл:</b> {file_name}\n"
-                f"🕒 <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+                f"🕒 <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n\n"
+                f"<b>Текст из PDF:</b>\n{result.get('debug_text', 'Не удалось извлечь текст')[:1000] if result else 'Нет данных'}"
             )
             await bot.send_message(ADMIN_CHAT_ID, admin_msg, parse_mode="HTML")
             
